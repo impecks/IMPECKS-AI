@@ -1,141 +1,297 @@
-# 🚀 Welcome to Z.ai Code Scaffold
+# IMPECKS-AI - AI-Powered Development Environment
 
-A modern, production-ready web application scaffold powered by cutting-edge technologies, designed to accelerate your development with [Z.ai](https://chat.z.ai)'s AI-powered coding assistance.
+🚀 **World-Class AI Coding Engine** - Transform your development workflow with AI assistance
 
-## ✨ Technology Stack
+## Overview
 
-This scaffold provides a robust foundation built with:
+IMPECKS-AI is a next-generation AI-powered development environment that combines the power of VS Code with advanced AI intelligence. Built for Next.js, Electron.js, and AWS serverless development.
 
-### 🎯 Core Framework
-- **⚡ Next.js 15** - The React framework for production with App Router
-- **📘 TypeScript 5** - Type-safe JavaScript for better developer experience
-- **🎨 Tailwind CSS 4** - Utility-first CSS framework for rapid UI development
+## ✨ Key Features
 
-### 🧩 UI Components & Styling
-- **🧩 shadcn/ui** - High-quality, accessible components built on Radix UI
-- **🎯 Lucide React** - Beautiful & consistent icon library
-- **🌈 Framer Motion** - Production-ready motion library for React
-- **🎨 Next Themes** - Perfect dark mode in 2 lines of code
+### 🎯 Professional IDE Interface
+- **Monaco-Style Editor**: Full VS Code editing experience
+- **File Explorer**: Tree navigation with folder/file management
+- **Multi-Tab System**: Handle multiple files simultaneously
+- **AI Chat Panel**: Real-time AI assistance with GLM 4.6
+- **Terminal Interface**: Command execution and output
+- **Resizable Panels**: Flexible workspace layout
 
-### 📋 Forms & Validation
-- **🎣 React Hook Form** - Performant forms with easy validation
-- **✅ Zod** - TypeScript-first schema validation
+### 🤖 AI-Powered Development
+- **Code Generation**: Intelligent code creation with GLM 4.6
+- **Auto-Refactoring**: Smart code optimization and improvements
+- **Bug Detection**: AI-assisted debugging and error fixing
+- **Performance Optimization**: Automated code enhancement
+- **Documentation Generation**: Auto-generate code documentation
 
-### 🔄 State Management & Data Fetching
-- **🐻 Zustand** - Simple, scalable state management
-- **🔄 TanStack Query** - Powerful data synchronization for React
-- **🌐 Axios** - Promise-based HTTP client
+### ☁️ Cloud-Native Architecture
+- **AWS Serverless**: Deploy to Lambda, API Gateway, DynamoDB
+- **S3 Integration**: File storage and backup solutions
+- **Real-time Collaboration**: Multi-user workspace support
+- **Version Control**: Integrated Git functionality
 
-### 🗄️ Database & Backend
-- **🗄️ Prisma** - Next-generation Node.js and TypeScript ORM
-- **🔐 NextAuth.js** - Complete open-source authentication solution
+## 🏗️ Technology Stack
 
-### 🎨 Advanced UI Features
-- **📊 TanStack Table** - Headless UI for building tables and datagrids
-- **🖱️ DND Kit** - Modern drag and drop toolkit for React
-- **📊 Recharts** - Redefined chart library built with React and D3
-- **🖼️ Sharp** - High performance image processing
+### Frontend
+- **Next.js 15** with App Router
+- **TypeScript 5** for type safety
+- **Tailwind CSS 4** with shadcn/ui
+- **Framer Motion** for animations
+- **React 19** with modern hooks
 
-### 🌍 Internationalization & Utilities
-- **🌍 Next Intl** - Internationalization library for Next.js
-- **📅 Date-fns** - Modern JavaScript date utility library
-- **🪝 ReactUse** - Collection of essential React hooks for modern development
+### Backend
+- **z-ai-web-dev-sdk** for GLM 4.6 integration
+- **Prisma ORM** with SQLite
+- **NextAuth.js** for authentication
+- **AWS SDK** for cloud services
 
-## 🎯 Why This Scaffold?
+### Development Tools
+- **ESLint** for code quality
+- **Prettier** for code formatting
+- **TypeScript** strict mode
+- **Hot reload** development
 
-- **🏎️ Fast Development** - Pre-configured tooling and best practices
-- **🎨 Beautiful UI** - Complete shadcn/ui component library with advanced interactions
-- **🔒 Type Safety** - Full TypeScript configuration with Zod validation
-- **📱 Responsive** - Mobile-first design principles with smooth animations
-- **🗄️ Database Ready** - Prisma ORM configured for rapid backend development
-- **🔐 Auth Included** - NextAuth.js for secure authentication flows
-- **📊 Data Visualization** - Charts, tables, and drag-and-drop functionality
-- **🌍 i18n Ready** - Multi-language support with Next Intl
-- **🚀 Production Ready** - Optimized build and deployment settings
-- **🤖 AI-Friendly** - Structured codebase perfect for AI assistance
+## 💰 Subscription Plans
 
-## 🚀 Quick Start
+| Plan | Price | Tokens | Features |
+|------|-------|---------|----------|
+| **Free** | $0 | 150/day | Educational use, basic features |
+| **Basic** | $6/mo | 25K/mo | Personal projects, standard speed |
+| **Starter** | $15/mo | 60K/mo | Medium refactors, test automation |
+| **Pro** | $25/mo | 150K/mo | Multi-file edits, fast inference ⭐ |
+| **Developer** | $50/mo | 400K/mo | Large codebases, batch editing |
+| **Team** | $99/mo | 1M/mo | Team collaboration, priority |
+| **Enterprise** | $299/mo | 5M/mo | Unlimited concurrency, SLA |
 
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js 18+ 
+- npm or yarn
+- Git
+
+### Installation
+
+1. **Clone the repository**
 ```bash
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-
-# Build for production
-npm run build
-
-# Start production server
-npm start
+git clone https://github.com/your-username/impecks-ai.git
+cd impecks-ai
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see your application running.
+2. **Install dependencies**
+```bash
+npm install
+```
 
-## 🤖 Powered by Z.ai
+3. **Set up environment variables**
+```bash
+cp .env.example .env.local
+# Edit .env.local with your configuration
+```
 
-This scaffold is optimized for use with [Z.ai](https://chat.z.ai) - your AI assistant for:
+4. **Set up the database**
+```bash
+npm run db:push
+```
 
-- **💻 Code Generation** - Generate components, pages, and features instantly
-- **🎨 UI Development** - Create beautiful interfaces with AI assistance  
-- **🔧 Bug Fixing** - Identify and resolve issues with intelligent suggestions
-- **📝 Documentation** - Auto-generate comprehensive documentation
-- **🚀 Optimization** - Performance improvements and best practices
+5. **Start development server**
+```bash
+npm run dev
+```
 
-Ready to build something amazing? Start chatting with Z.ai at [chat.z.ai](https://chat.z.ai) and experience the future of AI-powered development!
+6. **Open your browser**
+Navigate to [http://localhost:3000](http://localhost:3000)
+
+### Environment Variables
+
+Create `.env.local` with the following:
+
+```env
+# Database
+DATABASE_URL="file:./dev.db"
+
+# NextAuth.js
+NEXTAUTH_SECRET="your-secret-key"
+NEXTAUTH_URL="http://localhost:3000"
+
+# AI Services
+ZAI_API_KEY="your-z-ai-api-key"
+
+# AWS (optional for deployment)
+AWS_ACCESS_KEY_ID="your-aws-access-key"
+AWS_SECRET_ACCESS_KEY="your-aws-secret-key"
+AWS_REGION="us-east-1"
+
+# Payment (optional)
+PAYSTACK_SECRET_KEY="your-paystack-secret"
+```
 
 ## 📁 Project Structure
 
 ```
 src/
-├── app/                 # Next.js App Router pages
-├── components/          # Reusable React components
-│   └── ui/             # shadcn/ui components
-├── hooks/              # Custom React hooks
-└── lib/                # Utility functions and configurations
+├── app/                    # Next.js App Router
+│   ├── api/               # API routes
+│   │   ├── ai/           # AI integration endpoints
+│   │   ├── auth/         # Authentication
+│   │   └── subscription/ # Billing management
+│   ├── workspace/         # Main IDE interface
+│   └── (auth)/           # Authentication pages
+├── components/           # Reusable UI components
+│   ├── ui/              # shadcn/ui components
+│   ├── auth/            # Authentication components
+│   └── ide/             # IDE-specific components
+├── contexts/            # React contexts
+├── hooks/               # Custom React hooks
+├── lib/                 # Utility libraries
+└── types/               # TypeScript definitions
 ```
 
-## 🎨 Available Features & Components
+## 🔧 Available Scripts
 
-This scaffold includes a comprehensive set of modern web development tools:
+```bash
+# Development
+npm run dev              # Start development server
+npm run build            # Build for production
+npm run start            # Start production server
 
-### 🧩 UI Components (shadcn/ui)
-- **Layout**: Card, Separator, Aspect Ratio, Resizable Panels
-- **Forms**: Input, Textarea, Select, Checkbox, Radio Group, Switch
-- **Feedback**: Alert, Toast (Sonner), Progress, Skeleton
-- **Navigation**: Breadcrumb, Menubar, Navigation Menu, Pagination
-- **Overlay**: Dialog, Sheet, Popover, Tooltip, Hover Card
-- **Data Display**: Badge, Avatar, Calendar
+# Database
+npm run db:push          # Push schema to database
+npm run db:generate      # Generate Prisma client
+npm run db:migrate       # Run migrations
+npm run db:reset         # Reset database
 
-### 📊 Advanced Data Features
-- **Tables**: Powerful data tables with sorting, filtering, pagination (TanStack Table)
-- **Charts**: Beautiful visualizations with Recharts
-- **Forms**: Type-safe forms with React Hook Form + Zod validation
+# Code Quality
+npm run lint             # Run ESLint
+npm run type-check       # TypeScript type checking
+```
 
-### 🎨 Interactive Features
-- **Animations**: Smooth micro-interactions with Framer Motion
-- **Drag & Drop**: Modern drag-and-drop functionality with DND Kit
-- **Theme Switching**: Built-in dark/light mode support
+## 🎯 Core Features
 
-### 🔐 Backend Integration
-- **Authentication**: Ready-to-use auth flows with NextAuth.js
-- **Database**: Type-safe database operations with Prisma
-- **API Client**: HTTP requests with Axios + TanStack Query
-- **State Management**: Simple and scalable with Zustand
+### AI Chat Integration
+- Real-time conversation with GLM 4.6
+- Code-specific assistance
+- Context-aware responses
+- Token-based billing
 
-### 🌍 Production Features
-- **Internationalization**: Multi-language support with Next Intl
-- **Image Optimization**: Automatic image processing with Sharp
-- **Type Safety**: End-to-end TypeScript with Zod validation
-- **Essential Hooks**: 100+ useful React hooks with ReactUse for common patterns
+### Code Generation
+- Intelligent code creation
+- Multi-language support
+- Best practices enforcement
+- Error handling integration
 
-## 🤝 Get Started with Z.ai
+### Workspace Management
+- File tree navigation
+- Multi-tab editing
+- Real-time collaboration
+- Version control integration
 
-1. **Clone this scaffold** to jumpstart your project
-2. **Visit [chat.z.ai](https://chat.z.ai)** to access your AI coding assistant
-3. **Start building** with intelligent code generation and assistance
-4. **Deploy with confidence** using the production-ready setup
+### Terminal Interface
+- Command execution
+- Build process integration
+- Deployment automation
+- Real-time output
+
+## 🔐 Authentication & Security
+
+- **NextAuth.js** for secure authentication
+- **JWT tokens** for session management
+- **Role-based access control** (RBAC)
+- **Encryption** for sensitive data
+- **Rate limiting** for API protection
+
+## 💳 Payment Integration
+
+### Supported Payment Methods
+- **Paystack** (Africa - Primary)
+- **Google Pay** (Global)
+- **Credit/Debit Cards**
+
+### Subscription Management
+- Automated billing cycles
+- Webhook handling
+- Token quota management
+- Usage analytics
+
+## 🚀 Deployment
+
+### Vercel (Recommended)
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy
+vercel --prod
+```
+
+### AWS Serverless
+```bash
+# Configure AWS credentials
+aws configure
+
+# Deploy using serverless framework
+npm run deploy:aws
+```
+
+### Docker
+```bash
+# Build image
+docker build -t impecks-ai .
+
+# Run container
+docker run -p 3000:3000 impecks-ai
+```
+
+## 📊 Usage Analytics
+
+Track your development productivity:
+- Token consumption monitoring
+- Code generation statistics
+- Performance metrics
+- Usage patterns analysis
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🆘 Support
+
+- **Documentation**: [Full documentation](https://docs.impecks.ai)
+- **Discord Community**: [Join our community](https://discord.gg/impecks)
+- **Issues**: [GitHub Issues](https://github.com/your-username/impecks-ai/issues)
+- **Email**: support@impecks.ai
+
+## 🎯 Roadmap
+
+### v2.0 (Coming Soon)
+- [ ] Electron.js desktop application
+- [ ] Advanced collaboration features
+- [ ] More AI model options
+- [ ] Plugin system
+- [ ] Advanced debugging tools
+
+### v1.5 (In Development)
+- [ ] Code review AI
+- [ ] Automated testing generation
+- [ ] Performance profiling
+- [ ] Custom themes
+
+## 🏆 Acknowledgments
+
+- **GLM 4.6** for AI model capabilities
+- **shadcn/ui** for beautiful UI components
+- **Vercel** for hosting platform
+- **Next.js** team for the amazing framework
 
 ---
 
-Built with ❤️ for the developer community. Supercharged by [Z.ai](https://chat.z.ai) 🚀
+**Built with ❤️ by the IMPECKS-AI Team**
+
+*Transform your development workflow with AI-powered assistance*
