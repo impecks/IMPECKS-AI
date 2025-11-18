@@ -1,8 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// IMPECKS-AI Database Schema
+// AI-Powered Development Environment
 
 generator client {
   provider = "prisma-client-js"
@@ -14,13 +11,167 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  password      String
+  role          String   @default("user")
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Subscription and billing
+  subscriptionId String?
+  subscription   Subscription?
+  usageLogs      UsageLog[]
+  
+  // Workspace and files
+  workspaces     Workspace[]
+  
+  // Authentication tokens (stored as JSON string)
+  authTokens     String?  // JSON array of tokens
+  
+  // Posts (legacy - can be removed)
+  posts         Post[]
 }
 
+model Subscription {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id])
+  
+  // Plan details
+  plan              String   // free, basic, starter, pro, developer, team, enterprise
+  status            String   @default("active") // active, cancelled, expired, suspended
+  
+  // Token limits and usage
+  tokensAllowed     Int      // Monthly token allowance
+  tokensUsed        Int      @default(0)
+  tokensRemaining   Int      // Computed field
+  
+  // Billing
+  price             Float    // Monthly price in USD
+  currency          String   @default("USD")
+  billingCycle      String   @default("monthly") // monthly, yearly
+  
+  // Payment methods
+  paystackEmail     String?  // For Paystack payments
+  googlePayToken    String?  // For Google Pay payments
+  
+  // Timestamps
+  currentPeriodStart DateTime @default(now())
+  currentPeriodEnd   DateTime
+  trialEnd          DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model UsageLog {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  // Usage details
+  tokensUsed  Int
+  operation   String   // code_generation, chat, file_operation, etc.
+  endpoint    String   // API endpoint used
+  
+  // Request metadata
+  requestType String   // single_file, multi_file, batch_edit, etc.
+  complexity  String   // simple, medium, complex
+  
+  // Response metadata
+  responseTime Int     // Response time in milliseconds
+  success     Boolean  @default(true)
+  errorMessage String?
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+}
+
+model Workspace {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  // Workspace details
+  name        String
+  description String?
+  
+  // Workspace settings
+  isPublic    Boolean  @default(false)
+  settings    Json?    // Workspace configuration
+  
+  // Files and projects
+  files       WorkspaceFile[]
+  projects    Project[]
+  
+  // Collaboration (stored as JSON string)
+  collaborators String? // JSON array of user IDs who can access
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model WorkspaceFile {
+  id          String   @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  
+  // File details
+  name        String
+  path        String   // Full path within workspace
+  content     String?  // File content (for smaller files)
+  size        Int      @default(0) // File size in bytes
+  
+  // File metadata
+  language    String?  // Programming language
+  encoding    String   @default("utf-8")
+  
+  // S3 storage for larger files
+  s3Key       String?  // S3 object key
+  s3Bucket    String?  // S3 bucket name
+  
+  // Version control
+  version     Int      @default(1)
+  isDeleted   Boolean  @default(false)
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  
+  // Project details
+  name        String
+  description String?
+  type        String   // nextjs, electron, aws, etc.
+  
+  // Project configuration
+  config      Json?    // Project settings and configuration
+  
+  // Deployment settings
+  awsConfig   Json?    // AWS deployment configuration
+  domain      String?  // Custom domain
+  
+  // Build and deployment
+  lastBuildAt DateTime?
+  lastDeployAt DateTime?
+  buildStatus String   @default("pending") // pending, building, success, failed
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Legacy Post model - can be removed in future migration
 model Post {
   id        String   @id @default(cuid())
   title     String
@@ -29,4 +180,5 @@ model Post {
   authorId  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  author    User     @relation(fields: [authorId], references: [id])
 }
