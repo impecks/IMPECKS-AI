@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { DynamoDBService, SubscriptionService, UsageService } from '@/lib/aws'
-import ZAI from 'z-ai-web-dev-sdk'
+import { OpenRouterService } from '@/lib/openrouter'
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages, userId, operation = 'chat' } = await request.json()
+    const { messages, userId, operation = 'chat', model } = await request.json()
 
     if (!userId) {
       return NextResponse.json({ error: 'User ID required' }, { status: 401 })
@@ -19,7 +19,11 @@ export async function POST(request: NextRequest) {
     const subscription = subscriptionResult.item
 
     // Check token limits
-    const tokenCheck = await SubscriptionService.checkTokenLimit(userId, 100) // Estimate 100 tokens
+    const estimatedTokens = messages.reduce((total: number, msg: any) => {
+      return total + Math.ceil(msg.content.length / 4)
+    }, 0)
+
+    const tokenCheck = await SubscriptionService.checkTokenLimit(userId, estimatedTokens)
     if (!tokenCheck.canProceed) {
       return NextResponse.json({ 
         error: 'Token limit exceeded',
@@ -27,50 +31,47 @@ export async function POST(request: NextRequest) {
       }, { status: 429 })
     }
 
-    // Initialize ZAI SDK
-    const zai = await ZAI.create()
-
-    // Calculate tokens needed (simplified estimation)
-    const estimatedTokens = messages.reduce((total: number, msg: any) => {
-      return total + Math.ceil(msg.content.length / 4)
-    }, 0)
-
     const startTime = Date.now()
 
-    // Make request to GLM 4.6
-    const completion = await zai.chat.completions.create({
-      messages: messages.map((msg: any) => ({
-        role: msg.role,
-        content: msg.content
-      })),
+    // Make request to OpenRouter
+    const completion = await OpenRouterService.chatCompletion(messages, {
+      model: model,
       temperature: 0.7,
       max_tokens: 2000
     })
 
+    if (!completion.success) {
+      throw new Error(completion.error || 'OpenRouter API error')
+    }
+
     const responseTime = Date.now() - startTime
-    const responseContent = completion.choices[0]?.message?.content || ''
+    const responseContent = completion.content
+    const actualTokensUsed = completion.usage?.total_tokens || estimatedTokens
 
     // Update usage
     await Promise.all([
       // Update subscription token usage
-      SubscriptionService.updateSubscriptionUsage(userId, estimatedTokens),
+      SubscriptionService.updateSubscriptionUsage(userId, actualTokensUsed),
 
       // Log usage
-      UsageService.logUsage(userId, operation, estimatedTokens, {
+      UsageService.logUsage(userId, operation, actualTokensUsed, {
         endpoint: '/api/ai/chat',
         requestType: 'chat',
-        complexity: estimatedTokens > 1000 ? 'complex' : estimatedTokens > 500 ? 'medium' : 'simple',
+        complexity: actualTokensUsed > 1000 ? 'complex' : actualTokensUsed > 500 ? 'medium' : 'simple',
         responseTime,
-        success: true
+        success: true,
+        model: completion.data?.model || 'unknown'
       })
     ])
 
     return NextResponse.json({
       content: responseContent,
+      model: completion.data?.model,
       usage: {
-        tokensUsed: estimatedTokens,
-        tokensRemaining: subscription.tokensRemaining - estimatedTokens,
-        responseTime
+        tokensUsed: actualTokensUsed,
+        tokensRemaining: subscription.tokensRemaining - actualTokensUsed,
+        responseTime,
+        modelUsage: completion.usage
       }
     })
 
@@ -120,6 +121,9 @@ export async function GET(request: NextRequest) {
     // Get usage statistics
     const usageResult = await UsageService.getUsageStats(userId)
     
+    // Get OpenRouter usage stats
+    const openrouterUsage = await OpenRouterService.getUsageStats()
+    
     return NextResponse.json({
       subscription: {
         plan: subscription.plan,
@@ -128,7 +132,8 @@ export async function GET(request: NextRequest) {
         tokensRemaining: subscription.tokensRemaining,
         currentPeriodEnd: subscription.currentPeriodEnd
       },
-      usage: usageResult.success ? usageResult.items : []
+      usage: usageResult.success ? usageResult.items : [],
+      openrouterUsage: openrouterUsage.success ? openrouterUsage.usage : null
     })
 
   } catch (error: any) {

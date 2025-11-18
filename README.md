@@ -4,7 +4,7 @@
 
 ## Overview
 
-IMPECKS-AI is a next-generation AI-powered development environment that combines the power of VS Code with advanced AI intelligence. Built for Next.js, Electron.js, and AWS serverless development with **full AWS integration**.
+IMPECKS-AI is a next-generation AI-powered development environment that combines the power of VS Code with advanced AI intelligence. Built for Next.js, Electron.js, and AWS serverless development with **OpenRouter GLM 4.6 integration**.
 
 ## ✨ Key Features
 
@@ -16,12 +16,13 @@ IMPECKS-AI is a next-generation AI-powered development environment that combines
 - **Terminal Interface**: Command execution and output
 - **Resizable Panels**: Flexible workspace layout
 
-### 🤖 AI-Powered Development
+### 🤖 AI-Powered Development (OpenRouter + GLM 4.6)
 - **Code Generation**: Intelligent code creation with GLM 4.6
 - **Auto-Refactoring**: Smart code optimization and improvements
 - **Bug Detection**: AI-assisted debugging and error fixing
 - **Performance Optimization**: Automated code enhancement
 - **Documentation Generation**: Auto-generate code documentation
+- **Multi-Model Support**: Access to Claude, GPT-4, Gemini, and more
 
 ### ☁️ AWS-Native Architecture
 - **AWS Cognito**: Secure user authentication and authorization
@@ -40,19 +41,37 @@ IMPECKS-AI is a next-generation AI-powered development environment that combines
 - **Framer Motion** for animations
 - **React 19** with modern hooks
 
-### Backend (AWS Native)
+### Backend (AWS Native + OpenRouter)
 - **AWS Cognito** for authentication
 - **AWS DynamoDB** for database
 - **AWS S3** for file storage
 - **AWS Lambda** for serverless functions
 - **AWS SDK** for service integration
-- **z-ai-web-dev-sdk** for GLM 4.6 integration
+- **OpenRouter API** for GLM 4.6 and other AI models
+- **OpenAI SDK** for OpenRouter compatibility
 
 ### Development Tools
 - **ESLint** for code quality
 - **Prettier** for code formatting
 - **TypeScript** strict mode
 - **Hot reload** development
+
+## 🤖 AI Models Available (via OpenRouter)
+
+### Primary Models
+- **GLM 4.6** (zhipuai/glm-4-6b) - Default for IMPECKS-AI
+- **GLM 4.9B** (zhipuai/glm-4-9b-chat) - Enhanced Chinese model
+- **Claude 3.5 Sonnet** (anthropic/claude-3.5-sonnet) - Advanced reasoning
+- **GPT-4 Turbo** (openai/gpt-4-turbo) - Fast and capable
+- **GPT-4o** (openai/gpt-4o) - Latest OpenAI model
+- **Gemini Pro** (google/gemini-pro) - Google's multimodal model
+- **Mistral Large** (mistralai/mistral-large) - Efficient European model
+
+### Model Categories
+- **Chat Models**: General conversation and assistance
+- **Code Models**: Specialized for code generation and analysis
+- **Reasoning Models**: Advanced problem-solving and logic
+- **Multimodal Models**: Text, image, and audio processing
 
 ## 💰 Subscription Plans
 
@@ -73,6 +92,7 @@ IMPECKS-AI is a next-generation AI-powered development environment that combines
 - npm or yarn
 - Git
 - **AWS Account** with appropriate permissions
+- **OpenRouter API Key** for AI model access
 
 ### AWS Setup
 
@@ -101,28 +121,33 @@ aws dynamodb create-table \
 aws s3 mb s3://impecks-ai-workspaces
 ```
 
-2. **Install dependencies**:
+2. **Get OpenRouter API Key**:
+   - Visit [OpenRouter.ai](https://openrouter.ai)
+   - Sign up and get your API key
+   - Add credits for model usage
+
+3. **Install dependencies**:
 ```bash
 npm install
 ```
 
-3. **Set up environment variables**:
+4. **Set up environment variables**:
 ```bash
 cp .env.example .env.local
-# Edit .env.local with your AWS configuration
+# Edit .env.local with your configuration
 ```
 
-4. **Start development server**:
+5. **Start development server**:
 ```bash
 npm run dev
 ```
 
-5. **Open your browser**:
+6. **Open your browser**:
 Navigate to [http://localhost:3000](http://localhost:3000)
 
 ### Environment Variables
 
-Create `.env.local` with the following:
+Create `.env.local` with following:
 
 ```env
 # AWS Credentials
@@ -137,8 +162,8 @@ AWS_COGNITO_CLIENT_ID=your_client_id
 # AWS S3 Configuration
 AWS_S3_BUCKET=impecks-ai-workspaces
 
-# ZAI SDK Configuration
-ZAI_API_KEY=your_z_ai_api_key
+# OpenRouter Configuration (GLM 4.6)
+OPENROUTER_API_KEY=your_openrouter_api_key
 
 # Next.js Configuration
 NEXTAUTH_URL=http://localhost:3000
@@ -150,7 +175,12 @@ NEXTAUTH_URL=http://localhost:3000
 src/
 ├── app/                    # Next.js App Router
 │   ├── api/               # API routes (AWS Lambda ready)
-│   │   ├── ai/           # AI integration endpoints
+│   │   ├── ai/           # AI integration endpoints (OpenRouter)
+│   │   │   ├── chat/    # GLM 4.6 chat API
+│   │   │   ├── generate/ # Code generation API
+│   │   │   ├── analyze/  # Bug detection API
+│   │   │   ├── docs/     # Documentation API
+│   │   │   └── models/   # Model information API
 │   │   ├── auth/         # AWS Cognito authentication
 │   │   └── subscription/ # DynamoDB billing management
 │   ├── workspace/         # Main IDE interface
@@ -160,8 +190,9 @@ src/
 │   └── auth/            # Authentication components
 ├── contexts/            # React contexts (AWS auth)
 ├── hooks/               # Custom React hooks
-├── lib/                 # AWS service integrations
-│   └── aws.ts          # AWS SDK configurations
+├── lib/                 # AWS + OpenRouter integrations
+│   ├── aws.ts          # AWS SDK configurations
+│   └── openrouter.ts  # OpenRouter API client
 └── types/               # TypeScript definitions
 ```
 
@@ -183,6 +214,13 @@ npm run deploy:aws       # Deploy to AWS Lambda
 
 ## 🎯 Core Features
 
+### OpenRouter AI Integration
+- **GLM 4.6 Model**: Advanced Chinese and English language model
+- **Multi-Model Support**: Access to Claude, GPT-4, Gemini, Mistral
+- **Token-based Billing**: Pay-per-use pricing with OpenRouter
+- **Usage Analytics**: Real-time token consumption tracking
+- **Error Handling**: Comprehensive error logging and retry logic
+
 ### AWS Cognito Authentication
 - **Secure Sign Up/Sign In**: AWS Cognito user pools
 - **JWT Tokens**: Secure session management
@@ -201,12 +239,6 @@ npm run deploy:aws       # Deploy to AWS Lambda
 - **Backup System**: Automatic backup and recovery
 - **CDN Integration**: Fast file delivery
 
-### AI Integration
-- **GLM 4.6 Model**: Advanced AI code generation
-- **Token-based Billing**: Pay-per-use pricing model
-- **Usage Tracking**: Real-time token consumption
-- **Error Handling**: Comprehensive error logging
-
 ## 🔐 Security & Compliance
 
 - **AWS IAM**: Role-based access control
@@ -216,12 +248,15 @@ npm run deploy:aws       # Deploy to AWS Lambda
 - **GDPR Compliance**: User data protection
 - **SOC 2 Compliance**: Enterprise security standards
 
-## 💳 AWS Billing Integration
+## 💳 OpenRouter Billing Integration
 
-### Supported Payment Methods
-- **Stripe** (via AWS Marketplace)
-- **PayPal** (via AWS Billing)
-- **AWS Marketplace** (Enterprise accounts)
+### Model Pricing
+- **GLM 4.6**: $0.15 per 1M tokens
+- **Claude 3.5 Sonnet**: $3.00 per 1M tokens
+- **GPT-4 Turbo**: $0.30 per 1M tokens
+- **GPT-4o**: $5.00 per 1M tokens
+- **Gemini Pro**: $0.25 per 1M tokens
+- **Mistral Large**: $0.30 per 1M tokens
 
 ### Subscription Management
 - **DynamoDB Tracking**: Real-time usage monitoring
@@ -258,17 +293,17 @@ cdk deploy
 - **Usage Analytics**: Real-time usage data
 - **Cost Monitoring**: AWS cost optimization
 
-### Custom Dashboards
-- **User Activity**: Engagement metrics
-- **AI Usage**: Token consumption tracking
-- **Performance**: Response time monitoring
-- **Error Rates**: System health indicators
+### OpenRouter Dashboard
+- **Token Usage**: Real-time consumption tracking
+- **Model Performance**: Response time and success rates
+- **Cost Analysis**: Detailed billing breakdown
+- **API Health**: Service availability monitoring
 
 ## 🤝 Contributing
 
-1. Fork the repository
+1. Fork repository
 2. Create a feature branch
-3. Set up AWS environment locally
+3. Set up AWS and OpenRouter environment locally
 4. Make your changes
 5. Add tests if applicable
 6. Submit a pull request
@@ -279,49 +314,49 @@ This project is licensed under MIT License - see [LICENSE](LICENSE) file for det
 
 ## 🆘 Support
 
-- **Documentation**: [Full AWS setup guide](https://docs.impecks.ai)
+- **Documentation**: [Full AWS + OpenRouter setup guide](https://docs.impecks.ai)
 - **Discord Community**: [Join our community](https://discord.gg/impecks)
 - **Issues**: [GitHub Issues](https://github.com/impecks/IMPECKS-AI/issues)
 - **Email**: support@impecks.ai
-- **AWS Support**: Enterprise AWS customers
+- **OpenRouter Support**: [OpenRouter Documentation](https://openrouter.ai/docs)
 
 ## 🎯 Roadmap
 
 ### v2.0 (Coming Soon)
-- [ ] **AWS Amplify Integration**: Enhanced mobile support
-- [ ] **AWS Step Functions**: Workflow automation
-- [ ] **AWS Kinesis**: Real-time data streaming
-- [ ] **AWS CloudFront**: Global CDN deployment
-- [ ] **AWS WAF**: Advanced security protection
+- [ ] **Advanced Model Routing**: Automatic model selection based on task
+- [ ] **Custom Model Training**: Fine-tune models on your codebase
+- [ ] **Real-time Collaboration**: Live coding sessions with AI assistance
+- [ ] **Plugin System**: Extend functionality with custom plugins
+- [ ] **Advanced Debugging**: AI-powered breakpoint suggestions
 
 ### v1.5 (In Development)
-- [ ] **AWS IoT**: Device integration
-- [ ] **AWS SageMaker**: ML model training
-- [ ] **AWS EventBridge**: Event-driven architecture
-- [ ] **AWS Secrets Manager**: Enhanced security
+- [ ] **Code Review AI**: Automated code review and suggestions
+- [ ] **Performance Profiling**: AI-powered performance analysis
+- [ ] **Test Generation**: Automated unit test creation
+- [ ] **Documentation Sync**: Auto-sync with external documentation tools
 
-## 🏆 AWS Benefits
+## 🏆 OpenRouter Benefits
 
-### Scalability
-- **Auto-scaling**: Handle millions of users
-- **Global Infrastructure**: Low latency worldwide
-- **Serverless**: No server management
-- **Pay-per-use**: Cost optimization
+### Model Diversity
+- **100+ Models**: Access to cutting-edge AI models
+- **Best-in-Class**: GLM 4.6, Claude 3.5, GPT-4o, Gemini Pro
+- **Specialized Models**: Code-specific, reasoning, and multimodal models
+- **Competitive Pricing**: Cost-effective token pricing
 
 ### Reliability
-- **99.99% Uptime**: AWS SLA guarantee
-- **Multi-AZ**: High availability
-- **Backup & Recovery**: Automated backups
-- **Disaster Recovery**: Business continuity
+- **99.9% Uptime**: OpenRouter SLA guarantee
+- **Load Balancing**: Automatic failover between providers
+- **Rate Limiting**: Intelligent request management
+- **Global Infrastructure**: Low latency worldwide
 
-### Security
-- **Enterprise-grade**: AWS security standards
-- **Compliance**: SOC 2, ISO 27001, HIPAA
-- **Encryption**: End-to-end encryption
-- **Access Control**: Fine-grained permissions
+### Integration
+- **OpenAI Compatible**: Drop-in replacement for OpenAI SDK
+- **AWS Ready**: Seamless integration with AWS services
+- **Monitoring**: Built-in usage and performance tracking
+- **Flexible Billing**: Pay-per-use with detailed analytics
 
 ---
 
 **Built with ❤️ by IMPECKS-AI Team**
 
-*Powered by AWS - Transform your development workflow with AI assistance on the world's most reliable cloud platform*
+*Powered by AWS + OpenRouter - Transform your development workflow with GLM 4.6 and the world's best AI models*

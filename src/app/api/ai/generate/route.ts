@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { DynamoDBService, SubscriptionService, UsageService } from '@/lib/aws'
-import ZAI from 'z-ai-web-dev-sdk'
+import { OpenRouterService } from '@/lib/openrouter'
 
 export async function POST(request: NextRequest) {
   try {
-    const { prompt, language, context = '', userId, operation = 'code_generation' } = await request.json()
+    const { prompt, language, context = '', userId, operation = 'code_generation', model } = await request.json()
 
     if (!userId) {
       return NextResponse.json({ error: 'User ID required' }, { status: 401 })
@@ -28,69 +28,48 @@ export async function POST(request: NextRequest) {
       }, { status: 429 })
     }
 
-    // Initialize ZAI SDK
-    const zai = await ZAI.create()
-
     const startTime = Date.now()
 
-    // Create enhanced prompt for code generation
-    const enhancedPrompt = `You are an expert software engineer and AI coding assistant. Generate high-quality, production-ready code based on the following request.
-
-Language: ${language}
-Context: ${context}
-Request: ${prompt}
-
-Requirements:
-- Write clean, maintainable, and well-documented code
-- Follow best practices and coding standards
-- Include error handling where appropriate
-- Use modern syntax and features
-- Add comments for complex logic
-- Ensure the code is complete and functional
-
-Generate only the code without explanations unless specifically requested.`
-
-    // Make request to GLM 4.6
-    const completion = await zai.chat.completions.create({
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a world-class software engineer and AI coding assistant. You generate clean, efficient, and production-ready code.'
-        },
-        {
-          role: 'user',
-          content: enhancedPrompt
-        }
-      ],
+    // Make request to OpenRouter for code generation
+    const completion = await OpenRouterService.codeGeneration(prompt, context, language, {
+      model: model,
       temperature: 0.3,
       max_tokens: 4000
     })
 
+    if (!completion.success) {
+      throw new Error(completion.error || 'OpenRouter API error')
+    }
+
     const responseTime = Date.now() - startTime
-    const generatedCode = completion.choices[0]?.message?.content || ''
+    const generatedCode = completion.content
+    const actualTokensUsed = completion.usage?.total_tokens || estimatedTokens
 
     // Update usage
     await Promise.all([
       // Update subscription token usage
-      SubscriptionService.updateSubscriptionUsage(userId, estimatedTokens),
+      SubscriptionService.updateSubscriptionUsage(userId, actualTokensUsed),
 
       // Log usage
-      UsageService.logUsage(userId, operation, estimatedTokens, {
+      UsageService.logUsage(userId, operation, actualTokensUsed, {
         endpoint: '/api/ai/generate',
         requestType: 'code_generation',
-        complexity: estimatedTokens > 2000 ? 'complex' : estimatedTokens > 1000 ? 'medium' : 'simple',
+        complexity: actualTokensUsed > 2000 ? 'complex' : actualTokensUsed > 1000 ? 'medium' : 'simple',
         responseTime,
-        success: true
+        success: true,
+        model: completion.data?.model || 'unknown'
       })
     ])
 
     return NextResponse.json({
       code: generatedCode,
       language,
+      model: completion.data?.model,
       usage: {
-        tokensUsed: estimatedTokens,
-        tokensRemaining: subscription.tokensRemaining - estimatedTokens,
-        responseTime
+        tokensUsed: actualTokensUsed,
+        tokensRemaining: subscription.tokensRemaining - actualTokensUsed,
+        responseTime,
+        modelUsage: completion.usage
       }
     })
 
@@ -122,7 +101,7 @@ Generate only the code without explanations unless specifically requested.`
 
 export async function PUT(request: NextRequest) {
   try {
-    const { code, instruction, language, userId, operation = 'refactoring' } = await request.json()
+    const { code, instruction, language, userId, operation = 'refactoring', model } = await request.json()
 
     if (!userId) {
       return NextResponse.json({ error: 'User ID required' }, { status: 401 })
@@ -146,72 +125,48 @@ export async function PUT(request: NextRequest) {
       }, { status: 429 })
     }
 
-    // Initialize ZAI SDK
-    const zai = await ZAI.create()
-
     const startTime = Date.now()
 
-    // Create refactoring prompt
-    const refactoringPrompt = `You are an expert software engineer specializing in code refactoring and optimization. 
-
-Language: ${language}
-Current Code:
-\`\`\`${language}
-${code}
-\`\`\`
-
-Refactoring Instruction: ${instruction}
-
-Requirements:
-- Maintain the original functionality
-- Improve code quality, readability, and performance
-- Follow best practices and design patterns
-- Add appropriate comments for changes
-- Ensure the refactored code is complete and functional
-
-Provide the refactored code only, without explanations unless specifically requested.`
-
-    // Make request to GLM 4.6
-    const completion = await zai.chat.completions.create({
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a world-class software engineer specializing in code refactoring, optimization, and best practices.'
-        },
-        {
-          role: 'user',
-          content: refactoringPrompt
-        }
-      ],
+    // Make request to OpenRouter for code refactoring
+    const completion = await OpenRouterService.codeRefactoring(code, instruction, language, {
+      model: model,
       temperature: 0.2,
       max_tokens: 4000
     })
 
+    if (!completion.success) {
+      throw new Error(completion.error || 'OpenRouter API error')
+    }
+
     const responseTime = Date.now() - startTime
-    const refactoredCode = completion.choices[0]?.message?.content || ''
+    const refactoredCode = completion.content
+    const actualTokensUsed = completion.usage?.total_tokens || estimatedTokens
 
     // Update usage
     await Promise.all([
       // Update subscription token usage
-      SubscriptionService.updateSubscriptionUsage(userId, estimatedTokens),
+      SubscriptionService.updateSubscriptionUsage(userId, actualTokensUsed),
 
       // Log usage
-      UsageService.logUsage(userId, operation, estimatedTokens, {
+      UsageService.logUsage(userId, operation, actualTokensUsed, {
         endpoint: '/api/ai/generate',
         requestType: 'refactoring',
-        complexity: estimatedTokens > 2000 ? 'complex' : estimatedTokens > 1000 ? 'medium' : 'simple',
+        complexity: actualTokensUsed > 2000 ? 'complex' : actualTokensUsed > 1000 ? 'medium' : 'simple',
         responseTime,
-        success: true
+        success: true,
+        model: completion.data?.model || 'unknown'
       })
     ])
 
     return NextResponse.json({
       code: refactoredCode,
       language,
+      model: completion.data?.model,
       usage: {
-        tokensUsed: estimatedTokens,
-        tokensRemaining: subscription.tokensRemaining - estimatedTokens,
-        responseTime
+        tokensUsed: actualTokensUsed,
+        tokensRemaining: subscription.tokensRemaining - actualTokensUsed,
+        responseTime,
+        modelUsage: completion.usage
       }
     })
 
