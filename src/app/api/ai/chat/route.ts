@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { DynamoDBService } from '@/lib/aws'
+import { CognitoAuthService } from '@/lib/aws'
 import ZAI from 'z-ai-web-dev-sdk'
 
 export async function POST(request: NextRequest) {
@@ -11,17 +12,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user and subscription info
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      include: { subscription: true }
-    })
-
+    const user = await CognitoAuthService['getUserFromDB'](userId)
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Check subscription limits
-    const subscription = user.subscription
+    const subscription = await DynamoDBService.getSubscription(userId)
     if (!subscription) {
       return NextResponse.json({ error: 'No active subscription' }, { status: 403 })
     }
@@ -73,26 +69,22 @@ export async function POST(request: NextRequest) {
     // Update usage
     await Promise.all([
       // Update subscription token usage
-      db.subscription.update({
-        where: { userId },
-        data: {
-          tokensUsed: subscription.tokensUsed + actualTokensUsed,
-          tokensRemaining: subscription.tokensAllowed - (subscription.tokensUsed + actualTokensUsed)
-        }
+      DynamoDBService.updateSubscription(userId, {
+        tokensUsed: subscription.tokensUsed + actualTokensUsed,
+        tokensRemaining: subscription.tokensAllowed - (subscription.tokensUsed + actualTokensUsed)
       }),
 
       // Log usage
-      db.usageLog.create({
-        data: {
-          userId,
-          tokensUsed: actualTokensUsed,
-          operation,
-          endpoint: '/api/ai/chat',
-          requestType: 'chat',
-          complexity: actualTokensUsed > 1000 ? 'complex' : actualTokensUsed > 500 ? 'medium' : 'simple',
-          responseTime,
-          success: true
-        }
+      DynamoDBService.createUsageLog({
+        id: `${userId}_${Date.now()}`,
+        userId,
+        tokensUsed: actualTokensUsed,
+        operation,
+        endpoint: '/api/ai/chat',
+        requestType: 'chat',
+        complexity: actualTokensUsed > 1000 ? 'complex' : actualTokensUsed > 500 ? 'medium' : 'simple',
+        responseTime,
+        success: true
       })
     ])
 
@@ -111,18 +103,17 @@ export async function POST(request: NextRequest) {
     // Log failed usage
     if (request.body?.userId) {
       try {
-        await db.usageLog.create({
-          data: {
-            userId: request.body.userId,
-            tokensUsed: 0,
-            operation: request.body.operation || 'chat',
-            endpoint: '/api/ai/chat',
-            requestType: 'chat',
-            complexity: 'simple',
-            responseTime: 0,
-            success: false,
-            errorMessage: error.message
-          }
+        await DynamoDBService.createUsageLog({
+          id: `${request.body.userId}_${Date.now()}`,
+          userId: request.body.userId,
+          tokensUsed: 0,
+          operation: request.body.operation || 'chat',
+          endpoint: '/api/ai/chat',
+          requestType: 'chat',
+          complexity: 'simple',
+          responseTime: 0,
+          success: false,
+          errorMessage: error.message
         })
       } catch (logError) {
         console.error('Failed to log usage error:', logError)
@@ -146,29 +137,31 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user's subscription info
-    const subscription = await db.subscription.findUnique({
-      where: { userId }
-    })
+    const subscription = await DynamoDBService.getSubscription(userId)
 
     if (!subscription) {
       return NextResponse.json({ error: 'No subscription found' }, { status: 404 })
     }
 
     // Get usage statistics
-    const usageStats = await db.usageLog.groupBy({
-      by: ['operation'],
-      where: {
-        userId,
-        createdAt: {
-          gte: new Date(subscription.currentPeriodStart)
-        }
-      },
-      _count: {
-        id: true
-      },
-      _sum: {
-        tokensUsed: true
+    const usageLogs = await DynamoDBService.getUsageLogs(userId)
+
+    const usageStats = usageLogs.reduce((acc: any, log) => {
+      const key = log.operation
+      if (!acc[key]) {
+        acc[key] = { count: 0, tokensUsed: 0, avgResponseTime: 0, responseTimes: [] }
       }
+      acc[key].count++
+      acc[key].tokensUsed += log.tokensUsed
+      acc[key].responseTimes.push(log.responseTime)
+      return acc
+    }, {})
+
+    // Calculate averages
+    Object.keys(usageStats).forEach(key => {
+      const stats = usageStats[key]
+      stats.avgResponseTime = stats.responseTimes.reduce((a: number, b: number) => a + b, 0) / stats.responseTimes.length
+      delete stats.responseTimes
     })
 
     return NextResponse.json({

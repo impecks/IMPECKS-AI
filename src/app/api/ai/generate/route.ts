@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { DynamoDBService } from '@/lib/aws'
+import { CognitoAuthService } from '@/lib/aws'
 import ZAI from 'z-ai-web-dev-sdk'
 
 export async function POST(request: NextRequest) {
@@ -11,17 +12,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user and subscription info
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      include: { subscription: true }
-    })
-
+    const user = await CognitoAuthService['getUserFromDB'](userId)
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Check subscription limits
-    const subscription = user.subscription
+    const subscription = await DynamoDBService.getSubscription(userId)
     if (!subscription) {
       return NextResponse.json({ error: 'No active subscription' }, { status: 403 })
     }
@@ -94,26 +90,22 @@ Generate only the code without explanations unless specifically requested.`
     // Update usage
     await Promise.all([
       // Update subscription token usage
-      db.subscription.update({
-        where: { userId },
-        data: {
-          tokensUsed: subscription.tokensUsed + actualTokensUsed,
-          tokensRemaining: subscription.tokensAllowed - (subscription.tokensUsed + actualTokensUsed)
-        }
+      DynamoDBService.updateSubscription(userId, {
+        tokensUsed: subscription.tokensUsed + actualTokensUsed,
+        tokensRemaining: subscription.tokensAllowed - (subscription.tokensUsed + actualTokensUsed)
       }),
 
       // Log usage
-      db.usageLog.create({
-        data: {
-          userId,
-          tokensUsed: actualTokensUsed,
-          operation,
-          endpoint: '/api/ai/generate',
-          requestType: 'code_generation',
-          complexity: actualTokensUsed > 2000 ? 'complex' : actualTokensUsed > 1000 ? 'medium' : 'simple',
-          responseTime,
-          success: true
-        }
+      DynamoDBService.createUsageLog({
+        id: `${userId}_${Date.now()}`,
+        userId,
+        tokensUsed: actualTokensUsed,
+        operation,
+        endpoint: '/api/ai/generate',
+        requestType: 'code_generation',
+        complexity: actualTokensUsed > 2000 ? 'complex' : actualTokensUsed > 1000 ? 'medium' : 'simple',
+        responseTime,
+        success: true
       })
     ])
 
@@ -133,18 +125,17 @@ Generate only the code without explanations unless specifically requested.`
     // Log failed usage
     if (request.body?.userId) {
       try {
-        await db.usageLog.create({
-          data: {
-            userId: request.body.userId,
-            tokensUsed: 0,
-            operation: request.body.operation || 'code_generation',
-            endpoint: '/api/ai/generate',
-            requestType: 'code_generation',
-            complexity: 'simple',
-            responseTime: 0,
-            success: false,
-            errorMessage: error.message
-          }
+        await DynamoDBService.createUsageLog({
+          id: `${request.body.userId}_${Date.now()}`,
+          userId: request.body.userId,
+          tokensUsed: 0,
+          operation: request.body.operation || 'code_generation',
+          endpoint: '/api/ai/generate',
+          requestType: 'code_generation',
+          complexity: 'simple',
+          responseTime: 0,
+          success: false,
+          errorMessage: error.message
         })
       } catch (logError) {
         console.error('Failed to log usage error:', logError)
@@ -167,17 +158,12 @@ export async function PUT(request: NextRequest) {
     }
 
     // Get user and subscription info
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      include: { subscription: true }
-    })
-
+    const user = await CognitoAuthService['getUserFromDB'](userId)
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Check subscription limits
-    const subscription = user.subscription
+    const subscription = await DynamoDBService.getSubscription(userId)
     if (!subscription) {
       return NextResponse.json({ error: 'No active subscription' }, { status: 403 })
     }
@@ -253,26 +239,22 @@ Provide the refactored code only, without explanations unless specifically reque
     // Update usage
     await Promise.all([
       // Update subscription token usage
-      db.subscription.update({
-        where: { userId },
-        data: {
-          tokensUsed: subscription.tokensUsed + actualTokensUsed,
-          tokensRemaining: subscription.tokensAllowed - (subscription.tokensUsed + actualTokensUsed)
-        }
+      DynamoDBService.updateSubscription(userId, {
+        tokensUsed: subscription.tokensUsed + actualTokensUsed,
+        tokensRemaining: subscription.tokensAllowed - (subscription.tokensUsed + actualTokensUsed)
       }),
 
       // Log usage
-      db.usageLog.create({
-        data: {
-          userId,
-          tokensUsed: actualTokensUsed,
-          operation,
-          endpoint: '/api/ai/generate',
-          requestType: 'refactoring',
-          complexity: actualTokensUsed > 2000 ? 'complex' : actualTokensUsed > 1000 ? 'medium' : 'simple',
-          responseTime,
-          success: true
-        }
+      DynamoDBService.createUsageLog({
+        id: `${userId}_${Date.now()}`,
+        userId,
+        tokensUsed: actualTokensUsed,
+        operation,
+        endpoint: '/api/ai/generate',
+        requestType: 'refactoring',
+        complexity: actualTokensUsed > 2000 ? 'complex' : actualTokensUsed > 1000 ? 'medium' : 'simple',
+        responseTime,
+        success: true
       })
     ])
 
@@ -292,18 +274,17 @@ Provide the refactored code only, without explanations unless specifically reque
     // Log failed usage
     if (request.body?.userId) {
       try {
-        await db.usageLog.create({
-          data: {
-            userId: request.body.userId,
-            tokensUsed: 0,
-            operation: request.body.operation || 'refactoring',
-            endpoint: '/api/ai/generate',
-            requestType: 'refactoring',
-            complexity: 'simple',
-            responseTime: 0,
-            success: false,
-            errorMessage: error.message
-          }
+        await DynamoDBService.createUsageLog({
+          id: `${request.body.userId}_${Date.now()}`,
+          userId: request.body.userId,
+          tokensUsed: 0,
+          operation: request.body.operation || 'refactoring',
+          endpoint: '/api/ai/generate',
+          requestType: 'refactoring',
+          complexity: 'simple',
+          responseTime: 0,
+          success: false,
+          errorMessage: error.message
         })
       } catch (logError) {
         console.error('Failed to log usage error:', logError)

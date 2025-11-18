@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import jwt from 'jsonwebtoken'
+import { CognitoAuthService } from '@/lib/aws'
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,45 +7,28 @@ export async function GET(request: NextRequest) {
 
     if (!token) {
       return NextResponse.json(
-        { error: 'No token provided' },
+        { error: 'No authentication token found' },
         { status: 401 }
       )
     }
 
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret') as {
-      userId: string
-      email: string
-      role: string
-    }
+    const result = await CognitoAuthService.verifyToken(token)
 
-    // Get user from database
-    const user = await db.user.findUnique({
-      where: { id: decoded.userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        emailVerified: true,
-        image: true,
-        createdAt: true,
-      }
-    })
-
-    if (!user) {
+    if (result.valid && result.user) {
+      return NextResponse.json({
+        user: result.user
+      })
+    } else {
       return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
+        { error: result.error || 'Invalid token' },
+        { status: 401 }
       )
     }
-
-    return NextResponse.json({ user })
-  } catch (error) {
-    console.error('Auth verification error:', error)
+  } catch (error: any) {
+    console.error('Auth me API error:', error)
     return NextResponse.json(
-      { error: 'Invalid token' },
-      { status: 401 }
+      { error: 'Failed to verify authentication' },
+      { status: 500 }
     )
   }
 }

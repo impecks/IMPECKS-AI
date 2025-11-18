@@ -1,65 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import bcrypt from 'bcryptjs'
-import { z } from 'zod'
-
-const signupSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(2).optional(),
-  password: z.string().min(6),
-})
+import { CognitoAuthService } from '@/lib/aws'
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { email, name, password } = signupSchema.parse(body)
+    const { email, password, name } = await request.json()
 
-    // Check if user already exists
-    const existingUser = await db.user.findUnique({
-      where: { email }
-    })
-
-    if (existingUser) {
+    if (!email || !password) {
       return NextResponse.json(
-        { error: 'User already exists' },
+        { error: 'Email and password are required' },
         { status: 400 }
       )
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10)
+    const result = await CognitoAuthService.signUp(email, password, name)
 
-    // Create user
-    const user = await db.user.create({
-      data: {
-        email,
-        name,
-        password: hashedPassword,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        createdAt: true,
-      }
-    })
-
-    return NextResponse.json(
-      { message: 'User created successfully', user },
-      { status: 201 }
-    )
-  } catch (error) {
-    if (error instanceof z.ZodError) {
+    if (result.success) {
+      return NextResponse.json({
+        message: 'User created successfully',
+        user: result.user
+      })
+    } else {
       return NextResponse.json(
-        { error: 'Invalid input', details: error.errors },
+        { error: result.error },
         { status: 400 }
       )
     }
-
-    console.error('Signup error:', error)
+  } catch (error: any) {
+    console.error('Signup API error:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to create user' },
       { status: 500 }
     )
   }
