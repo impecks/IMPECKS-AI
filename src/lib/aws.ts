@@ -1,144 +1,73 @@
-import { CognitoIdentityProviderClient, AdminInitiateAuthCommand, AdminSetUserPasswordCommand, AdminCreateUserCommand, AdminUpdateUserAttributesCommand, AdminGetUserCommand, AdminDeleteUserCommand } from '@aws-sdk/client-cognito-identity-provider'
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
-import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, QueryCommand, ScanCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb'
-import { marshall, unmarshall } from '@aws-sdk/util-dynamodb'
+import { CognitoIdentityProviderClient, AdminInitiateAuthCommand, AdminCreateUserCommand, AdminSetUserPasswordCommand, AdminUpdateUserAttributesCommand, AdminDeleteUserCommand, AdminGetUserCommand, ListUsersCommand } from '@aws-sdk/client-cognito-identity-provider'
+import { DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand, QueryCommand, ScanCommand, DeleteItemCommand } from '@aws-sdk/client-dynamodb'
+import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, QueryCommand as DocQueryCommand, ScanCommand as DocScanCommand } from '@aws-sdk/lib-dynamodb'
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 // AWS Configuration
-const region = process.env.AWS_REGION || 'us-east-1'
-const userPoolId = process.env.AWS_COGNITO_USER_POOL_ID || ''
-const clientId = process.env.AWS_COGNITO_CLIENT_ID || ''
+const awsConfig = {
+  region: process.env.AWS_REGION || 'us-east-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
+  }
+}
 
-// Initialize AWS clients
-export const cognitoClient = new CognitoIdentityProviderClient({ region })
-export const dynamoClient = new DynamoDBClient({ region })
-export const dynamoDocClient = DynamoDBDocumentClient.from(dynamoClient)
+// Cognito Configuration
+const cognitoClient = new CognitoIdentityProviderClient(awsConfig)
+const USER_POOL_ID = process.env.AWS_COGNITO_USER_POOL_ID || ''
+const CLIENT_ID = process.env.AWS_COGNITO_CLIENT_ID || ''
 
-// Database Tables
+// DynamoDB Configuration
+const dynamoClient = new DynamoDBClient(awsConfig)
+const docClient = DynamoDBDocumentClient.from(dynamoClient)
+
+// S3 Configuration
+const s3Client = new S3Client(awsConfig)
+const S3_BUCKET = process.env.AWS_S3_BUCKET || 'impecks-ai-workspaces'
+
+// Database Table Names
 const TABLES = {
   USERS: 'impecks-users',
   SUBSCRIPTIONS: 'impecks-subscriptions',
-  USAGE_LOGS: 'impecks-usage-logs',
   WORKSPACES: 'impecks-workspaces',
   WORKSPACE_FILES: 'impecks-workspace-files',
-  PROJECTS: 'impecks-projects'
+  PROJECTS: 'impecks-projects',
+  USAGE_LOGS: 'impecks-usage-logs'
 }
 
-// User Management
-export interface User {
-  id: string
-  email: string
-  name?: string
-  role: string
-  emailVerified?: boolean
-  image?: string
-  createdAt: string
-  updatedAt: string
-  subscriptionId?: string
-}
-
-export interface Subscription {
-  userId: string
-  plan: string
-  status: string
-  tokensAllowed: number
-  tokensUsed: number
-  tokensRemaining: number
-  price: number
-  currency: string
-  billingCycle: string
-  paystackEmail?: string
-  googlePayToken?: string
-  currentPeriodStart: string
-  currentPeriodEnd: string
-  trialEnd?: string
-  cancelledAt?: string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface UsageLog {
-  id: string
-  userId: string
-  tokensUsed: number
-  operation: string
-  endpoint: string
-  requestType: string
-  complexity: string
-  responseTime: number
-  success: boolean
-  errorMessage?: string
-  createdAt: string
-}
-
-export interface Workspace {
-  id: string
-  userId: string
-  name: string
-  description?: string
-  isPublic: boolean
-  settings?: Record<string, any>
-  collaborators?: string[]
-  createdAt: string
-  updatedAt: string
-}
-
-export interface WorkspaceFile {
-  id: string
-  workspaceId: string
-  name: string
-  path: string
-  content?: string
-  size: number
-  language?: string
-  encoding: string
-  s3Key?: string
-  s3Bucket?: string
-  version: number
-  isDeleted: boolean
-  createdAt: string
-  updatedAt: string
-}
-
-export interface Project {
-  id: string
-  workspaceId: string
-  name: string
-  description?: string
-  type: string
-  config?: Record<string, any>
-  awsConfig?: Record<string, any>
-  domain?: string
-  lastBuildAt?: string
-  lastDeployAt?: string
-  buildStatus: string
-  createdAt: string
-  updatedAt: string
+// Subscription Plans
+const SUBSCRIPTION_PLANS = {
+  free: { tokensAllowed: 150, price: 0 },
+  basic: { tokensAllowed: 25000, price: 6 },
+  starter: { tokensAllowed: 60000, price: 15 },
+  pro: { tokensAllowed: 150000, price: 25 },
+  developer: { tokensAllowed: 400000, price: 50 },
+  team: { tokensAllowed: 1000000, price: 99 },
+  enterprise: { tokensAllowed: 5000000, price: 299 }
 }
 
 // Cognito Authentication Functions
 export class CognitoAuthService {
   static async signUp(email: string, password: string, name?: string) {
     try {
-      const username = email.toLowerCase()
-      
-      const createUserCommand = new AdminCreateUserCommand({
-        UserPoolId: userPoolId,
-        Username: username,
+      const command = new AdminCreateUserCommand({
+        UserPoolId: USER_POOL_ID,
+        Username: email,
         UserAttributes: [
           { Name: 'email', Value: email },
-          { Name: 'name', Value: name || '' },
+          { Name: 'name', Value: name || email.split('@')[0] },
           { Name: 'email_verified', Value: 'true' }
         ],
-        MessageAction: 'SUPPRESS', // Don't send welcome email
-        TemporaryPassword: password
+        MessageAction: 'SUPPRESS' // Don't send welcome email
       })
 
-      const user = await cognitoClient.send(createUserCommand)
-
-      // Set permanent password
+      const result = await cognitoClient.send(command)
+      
+      // Set temporary password
       const setPasswordCommand = new AdminSetUserPasswordCommand({
-        UserPoolId: userPoolId,
-        Username: username,
+        UserPoolId: USER_POOL_ID,
+        Username: email,
         Password: password,
         Permanent: true
       })
@@ -146,331 +75,411 @@ export class CognitoAuthService {
       await cognitoClient.send(setPasswordCommand)
 
       // Create user record in DynamoDB
-      const userRecord: User = {
-        id: username,
-        email,
-        name,
-        role: 'user',
-        emailVerified: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }
+      await this.createUserInDB(email, name)
 
-      await this.createUserInDB(userRecord)
-
-      return { success: true, user: userRecord }
+      return { success: true, user: result.User }
     } catch (error: any) {
-      console.error('Cognito signUp error:', error)
-      return { 
-        success: false, 
-        error: error.message || 'Failed to create user' 
-      }
+      console.error('Cognito signup error:', error)
+      return { success: false, error: error.message }
     }
   }
 
   static async signIn(email: string, password: string) {
     try {
       const command = new AdminInitiateAuthCommand({
-        UserPoolId: userPoolId,
-        ClientId: clientId,
+        UserPoolId: USER_POOL_ID,
+        ClientId: CLIENT_ID,
         AuthFlow: 'ADMIN_NO_SRP_AUTH',
         AuthParameters: {
-          USERNAME: email.toLowerCase(),
+          USERNAME: email,
           PASSWORD: password
         }
       })
 
-      const response = await cognitoClient.send(command)
-
-      if (response.AuthenticationResult) {
-        // Get user from DynamoDB
-        const user = await this.getUserFromDB(email.toLowerCase())
-        
-        return {
-          success: true,
-          tokens: response.AuthenticationResult,
-          user
+      const result = await cognitoClient.send(command)
+      
+      if (result.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
+        return { 
+          success: false, 
+          challenge: 'NEW_PASSWORD_REQUIRED',
+          session: result.Session 
         }
-      } else {
-        return { success: false, error: 'Authentication failed' }
       }
-    } catch (error: any) {
-      console.error('Cognito signIn error:', error)
+
       return { 
-        success: false, 
-        error: error.message || 'Authentication failed' 
+        success: true, 
+        tokens: {
+          idToken: result.AuthenticationResult?.IdToken,
+          accessToken: result.AuthenticationResult?.AccessToken,
+          refreshToken: result.AuthenticationResult?.RefreshToken
+        }
       }
-    }
-  }
-
-  static async verifyToken(token: string) {
-    try {
-      // For production, use aws-jwt-verify
-      // For now, we'll implement a simple verification
-      const payload = JSON.parse(atob(token.split('.')[1]))
-      
-      // Check if token is expired
-      if (payload.exp * 1000 < Date.now()) {
-        return { valid: false, error: 'Token expired' }
-      }
-
-      // Get user from DynamoDB
-      const user = await this.getUserFromDB(payload.username)
-      
-      return { valid: true, user }
     } catch (error: any) {
-      console.error('Token verification error:', error)
-      return { valid: false, error: 'Invalid token' }
+      console.error('Cognito signin error:', error)
+      return { success: false, error: error.message }
     }
   }
 
-  // DynamoDB Helper Functions
-  private static async createUserInDB(user: User) {
+  static async getUserFromToken(token: string) {
+    try {
+      const command = new AdminGetUserCommand({
+        UserPoolId: USER_POOL_ID,
+        AccessToken: token
+      })
+
+      const result = await cognitoClient.send(command)
+      return { success: true, user: result }
+    } catch (error: any) {
+      console.error('Cognito get user error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  static async updateUserAttributes(email: string, attributes: Record<string, string>) {
+    try {
+      const userAttributes = Object.entries(attributes).map(([key, value]) => ({
+        Name: key,
+        Value: value
+      }))
+
+      const command = new AdminUpdateUserAttributesCommand({
+        UserPoolId: USER_POOL_ID,
+        Username: email,
+        UserAttributes: userAttributes
+      })
+
+      await cognitoClient.send(command)
+      return { success: true }
+    } catch (error: any) {
+      console.error('Cognito update user error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  static async deleteUser(email: string) {
+    try {
+      const command = new AdminDeleteUserCommand({
+        UserPoolId: USER_POOL_ID,
+        Username: email
+      })
+
+      await cognitoClient.send(command)
+      return { success: true }
+    } catch (error: any) {
+      console.error('Cognito delete user error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  private static async createUserInDB(email: string, name?: string) {
+    const user = {
+      userId: email,
+      email,
+      name: name || email.split('@')[0],
+      role: 'user',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+
     const command = new PutCommand({
       TableName: TABLES.USERS,
       Item: user
     })
-    return await dynamoDocClient.send(command)
-  }
 
-  private static async getUserFromDB(userId: string): Promise<User | null> {
-    const command = new GetCommand({
-      TableName: TABLES.USERS,
-      Key: { id: userId }
-    })
-    
-    const result = await dynamoDocClient.send(command)
-    return result.Item as User || null
-  }
-
-  static async updateUserInDB(userId: string, updates: Partial<User>) {
-    const command = new UpdateCommand({
-      TableName: TABLES.USERS,
-      Key: { id: userId },
-      UpdateExpression: 'SET ' + Object.keys(updates).map(key => `${key} = :${key}`).join(', '),
-      ExpressionAttributeValues: Object.keys(updates).reduce((acc, key) => ({
-        ...acc,
-        [`:${key}`]: updates[key as keyof User]
-      }), {}),
-      ReturnValues: 'ALL_NEW'
-    })
-    
-    const result = await dynamoDocClient.send(command)
-    return result.Attributes as User
+    await docClient.send(command)
   }
 }
 
-// DynamoDB Service Class
+// DynamoDB Database Functions
 export class DynamoDBService {
-  // Subscription Management
-  static async createSubscription(subscription: Omit<Subscription, 'createdAt' | 'updatedAt'>) {
-    const now = new Date().toISOString()
-    const item: Subscription = {
-      ...subscription,
-      createdAt: now,
-      updatedAt: now
+  static async getItem(tableName: string, key: Record<string, any>) {
+    try {
+      const command = new GetCommand({
+        TableName: tableName,
+        Key: key
+      })
+
+      const result = await docClient.send(command)
+      return { success: true, item: result.Item }
+    } catch (error: any) {
+      console.error('DynamoDB get item error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  static async putItem(tableName: string, item: Record<string, any>) {
+    try {
+      const command = new PutCommand({
+        TableName: tableName,
+        Item: item
+      })
+
+      await docClient.send(command)
+      return { success: true }
+    } catch (error: any) {
+      console.error('DynamoDB put item error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  static async updateItem(tableName: string, key: Record<string, any>, updateExpression: string, expressionAttributeValues: Record<string, any>) {
+    try {
+      const command = new UpdateCommand({
+        TableName: tableName,
+        Key: key,
+        UpdateExpression: updateExpression,
+        ExpressionAttributeValues: expressionAttributeValues,
+        ReturnValues: 'ALL_NEW'
+      })
+
+      const result = await docClient.send(command)
+      return { success: true, item: result.Attributes }
+    } catch (error: any) {
+      console.error('DynamoDB update item error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  static async query(tableName: string, keyConditionExpression: string, expressionAttributeValues?: Record<string, any>) {
+    try {
+      const command = new DocQueryCommand({
+        TableName: tableName,
+        KeyConditionExpression: keyConditionExpression,
+        ExpressionAttributeValues: expressionAttributeValues
+      })
+
+      const result = await docClient.send(command)
+      return { success: true, items: result.Items }
+    } catch (error: any) {
+      console.error('DynamoDB query error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  static async scan(tableName: string, filterExpression?: string, expressionAttributeValues?: Record<string, any>) {
+    try {
+      const command = new DocScanCommand({
+        TableName: tableName,
+        FilterExpression: filterExpression,
+        ExpressionAttributeValues: expressionAttributeValues
+      })
+
+      const result = await docClient.send(command)
+      return { success: true, items: result.Items }
+    } catch (error: any) {
+      console.error('DynamoDB scan error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  static async deleteItem(tableName: string, key: Record<string, any>) {
+    try {
+      const command = new DeleteCommand({
+        TableName: tableName,
+        Key: key
+      })
+
+      await docClient.send(command)
+      return { success: true }
+    } catch (error: any) {
+      console.error('DynamoDB delete item error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+}
+
+// S3 Storage Functions
+export class S3Service {
+  static async uploadFile(key: string, body: Buffer | string, contentType: string) {
+    try {
+      const command = new PutObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: key,
+        Body: body,
+        ContentType: contentType
+      })
+
+      await s3Client.send(command)
+      return { success: true, key }
+    } catch (error: any) {
+      console.error('S3 upload error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  static async getFile(key: string) {
+    try {
+      const command = new GetObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: key
+      })
+
+      const result = await s3Client.send(command)
+      return { success: true, data: result.Body }
+    } catch (error: any) {
+      console.error('S3 get file error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  static async deleteFile(key: string) {
+    try {
+      const command = new DeleteObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: key
+      })
+
+      await s3Client.send(command)
+      return { success: true }
+    } catch (error: any) {
+      console.error('S3 delete file error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  static async getSignedUrl(key: string, expiresIn: number = 3600) {
+    try {
+      const command = new GetObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: key
+      })
+
+      const url = await getSignedUrl(s3Client, command, { expiresIn })
+      return { success: true, url }
+    } catch (error: any) {
+      console.error('S3 signed URL error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  static async listFiles(prefix: string) {
+    try {
+      const command = new ListObjectsV2Command({
+        Bucket: S3_BUCKET,
+        Prefix: prefix
+      })
+
+      const result = await s3Client.send(command)
+      return { success: true, files: result.Contents }
+    } catch (error: any) {
+      console.error('S3 list files error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+}
+
+// Subscription Management
+export class SubscriptionService {
+  static async createSubscription(userId: string, plan: string, billingCycle: string = 'monthly') {
+    const planConfig = SUBSCRIPTION_PLANS[plan as keyof typeof SUBSCRIPTION_PLANS]
+    if (!planConfig) {
+      return { success: false, error: 'Invalid subscription plan' }
     }
 
-    const command = new PutCommand({
-      TableName: TABLES.SUBSCRIPTIONS,
-      Item: item
-    })
+    const price = billingCycle === 'yearly' ? planConfig.price * 10 : planConfig.price
+    const now = new Date()
+    const currentPeriodEnd = new Date(now.setMonth(now.getMonth() + (billingCycle === 'yearly' ? 12 : 1)))
 
-    await dynamoDocClient.send(command)
-    return item
+    const subscription = {
+      userId,
+      plan,
+      status: 'active',
+      tokensAllowed: planConfig.tokensAllowed,
+      tokensUsed: 0,
+      tokensRemaining: planConfig.tokensAllowed,
+      price,
+      billingCycle,
+      currentPeriodStart: new Date().toISOString(),
+      currentPeriodEnd: currentPeriodEnd.toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+
+    return await DynamoDBService.putItem(TABLES.SUBSCRIPTIONS, subscription)
   }
 
-  static async getSubscription(userId: string): Promise<Subscription | null> {
-    const command = new GetCommand({
-      TableName: TABLES.SUBSCRIPTIONS,
-      Key: { userId }
-    })
-
-    const result = await dynamoDocClient.send(command)
-    return result.Item as Subscription || null
+  static async getSubscription(userId: string) {
+    return await DynamoDBService.getItem(TABLES.SUBSCRIPTIONS, { userId })
   }
 
-  static async updateSubscription(userId: string, updates: Partial<Subscription>) {
-    const command = new UpdateCommand({
-      TableName: TABLES.SUBSCRIPTIONS,
-      Key: { userId },
-      UpdateExpression: 'SET ' + Object.keys(updates).map(key => `${key} = :${key}`).join(', '),
-      ExpressionAttributeValues: Object.keys(updates).reduce((acc, key) => ({
-        ...acc,
-        [`:${key}`]: updates[key as keyof Subscription]
-      }), {}),
-      ReturnValues: 'ALL_NEW'
-    })
+  static async updateSubscriptionUsage(userId: string, tokensUsed: number) {
+    const subscription = await this.getSubscription(userId)
+    if (!subscription.success) {
+      return { success: false, error: 'Subscription not found' }
+    }
 
-    const result = await dynamoDocClient.send(command)
-    return result.Attributes as Subscription
+    const newTokensUsed = (subscription.item.tokensUsed || 0) + tokensUsed
+    const tokensRemaining = Math.max(0, subscription.item.tokensAllowed - newTokensUsed)
+
+    return await DynamoDBService.updateItem(
+      TABLES.SUBSCRIPTIONS,
+      { userId },
+      'SET tokensUsed = :tokensUsed, tokensRemaining = :tokensRemaining, updatedAt = :updatedAt',
+      {
+        ':tokensUsed': newTokensUsed,
+        ':tokensRemaining': tokensRemaining,
+        ':updatedAt': new Date().toISOString()
+      }
+    )
   }
 
-  // Usage Logs
-  static async createUsageLog(log: Omit<UsageLog, 'createdAt'>) {
-    const item: UsageLog = {
-      ...log,
+  static async checkTokenLimit(userId: string, tokensNeeded: number) {
+    const subscription = await this.getSubscription(userId)
+    if (!subscription.success) {
+      return { canProceed: false, error: 'No subscription found' }
+    }
+
+    const tokensRemaining = subscription.item.tokensRemaining || 0
+    return {
+      canProceed: tokensRemaining >= tokensNeeded,
+      tokensRemaining,
+      tokensNeeded
+    }
+  }
+}
+
+// Usage Logging
+export class UsageService {
+  static async logUsage(userId: string, operation: string, tokensUsed: number, metadata: Record<string, any> = {}) {
+    const logEntry = {
+      id: `${userId}-${Date.now()}`,
+      userId,
+      tokensUsed,
+      operation,
+      endpoint: metadata.endpoint || '',
+      requestType: metadata.requestType || 'unknown',
+      complexity: metadata.complexity || 'simple',
+      responseTime: metadata.responseTime || 0,
+      success: metadata.success !== false,
+      errorMessage: metadata.errorMessage || null,
       createdAt: new Date().toISOString()
     }
 
-    const command = new PutCommand({
-      TableName: TABLES.USAGE_LOGS,
-      Item: item
-    })
-
-    await dynamoDocClient.send(command)
-    return item
+    return await DynamoDBService.putItem(TABLES.USAGE_LOGS, logEntry)
   }
 
-  static async getUsageLogs(userId: string, limit = 50) {
-    const command = new QueryCommand({
-      TableName: TABLES.USAGE_LOGS,
-      KeyConditionExpression: 'userId = :userId',
-      ExpressionAttributeValues: {
-        ':userId': userId
-      },
-      Limit: limit,
-      ScanIndexForward: false // Sort by descending (most recent first)
-    })
+  static async getUsageStats(userId: string, startDate?: string) {
+    const filterExpression = startDate 
+      ? 'userId = :userId AND createdAt >= :startDate'
+      : 'userId = :userId'
 
-    const result = await dynamoDocClient.send(command)
-    return result.Items as UsageLog[]
-  }
-
-  // Workspace Management
-  static async createWorkspace(workspace: Omit<Workspace, 'createdAt' | 'updatedAt'>) {
-    const now = new Date().toISOString()
-    const item: Workspace = {
-      ...workspace,
-      createdAt: now,
-      updatedAt: now
+    const expressionAttributeValues: any = { ':userId': userId }
+    if (startDate) {
+      expressionAttributeValues[':startDate'] = startDate
     }
 
-    const command = new PutCommand({
-      TableName: TABLES.WORKSPACES,
-      Item: item
-    })
-
-    await dynamoDocClient.send(command)
-    return item
-  }
-
-  static async getWorkspaces(userId: string) {
-    const command = new QueryCommand({
-      TableName: TABLES.WORKSPACES,
-      IndexName: 'userId-index', // You need to create this GSI
-      KeyConditionExpression: 'userId = :userId',
-      ExpressionAttributeValues: {
-        ':userId': userId
-      }
-    })
-
-    const result = await dynamoDocClient.send(command)
-    return result.Items as Workspace[]
-  }
-
-  // File Management
-  static async createWorkspaceFile(file: Omit<WorkspaceFile, 'createdAt' | 'updatedAt'>) {
-    const now = new Date().toISOString()
-    const item: WorkspaceFile = {
-      ...file,
-      createdAt: now,
-      updatedAt: now
-    }
-
-    const command = new PutCommand({
-      TableName: TABLES.WORKSPACE_FILES,
-      Item: item
-    })
-
-    await dynamoDocClient.send(command)
-    return item
-  }
-
-  static async getWorkspaceFiles(workspaceId: string) {
-    const command = new QueryCommand({
-      TableName: TABLES.WORKSPACE_FILES,
-      IndexName: 'workspaceId-index', // You need to create this GSI
-      KeyConditionExpression: 'workspaceId = :workspaceId',
-      ExpressionAttributeValues: {
-        ':workspaceId': workspaceId
-      }
-    })
-
-    const result = await dynamoDocClient.send(command)
-    return result.Items as WorkspaceFile[]
-  }
-
-  // Project Management
-  static async createProject(project: Omit<Project, 'createdAt' | 'updatedAt'>) {
-    const now = new Date().toISOString()
-    const item: Project = {
-      ...project,
-      createdAt: now,
-      updatedAt: now
-    }
-
-    const command = new PutCommand({
-      TableName: TABLES.PROJECTS,
-      Item: item
-    })
-
-    await dynamoDocClient.send(command)
-    return item
-  }
-
-  static async getProjects(workspaceId: string) {
-    const command = new QueryCommand({
-      TableName: TABLES.PROJECTS,
-      IndexName: 'workspaceId-index', // You need to create this GSI
-      KeyConditionExpression: 'workspaceId = :workspaceId',
-      ExpressionAttributeValues: {
-        ':workspaceId': workspaceId
-      }
-    })
-
-    const result = await dynamoDocClient.send(command)
-    return result.Items as Project[]
+    return await DynamoDBService.scan(TABLES.USAGE_LOGS, filterExpression, expressionAttributeValues)
   }
 }
 
-// Subscription Plans Configuration
-export const SUBSCRIPTION_PLANS = {
-  free: {
-    tokensAllowed: 150,
-    price: 0,
-    features: ['150 daily requests', 'Slow rate limit', 'Educational use only']
-  },
-  basic: {
-    tokensAllowed: 25000,
-    price: 6,
-    features: ['25,000 monthly tokens', 'Standard speed', 'Small coding tasks']
-  },
-  starter: {
-    tokensAllowed: 60000,
-    price: 15,
-    features: ['60,000 monthly tokens', 'Medium-sized refactors', 'Test automation']
-  },
-  pro: {
-    tokensAllowed: 150000,
-    price: 25,
-    features: ['150,000 tokens', 'Multi-file edits', 'Fast inference']
-  },
-  developer: {
-    tokensAllowed: 400000,
-    price: 50,
-    features: ['400,000 tokens', 'Large codebase support', 'Batch editing']
-  },
-  team: {
-    tokensAllowed: 1000000,
-    price: 99,
-    features: ['1 million tokens', 'Team collaboration', 'Priority rate limit']
-  },
-  enterprise: {
-    tokensAllowed: 5000000,
-    price: 299,
-    features: ['5 million tokens', 'Highest speed', 'SLA guarantee']
-  }
-} as const
-
-export type SubscriptionPlan = keyof typeof SUBSCRIPTION_PLANS
+export {
+  awsConfig,
+  TABLES,
+  SUBSCRIPTION_PLANS,
+  cognitoClient,
+  docClient,
+  s3Client,
+  USER_POOL_ID,
+  CLIENT_ID,
+  S3_BUCKET
+}

@@ -1,25 +1,21 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { CognitoAuthService } from '@/lib/aws'
 
 interface User {
-  id: string
+  userId: string
   email: string
   name?: string
-  role: string
-  emailVerified?: boolean
-  image?: string
-  createdAt: string
-  updatedAt: string
+  role?: string
 }
 
 interface AuthContextType {
   user: User | null
   loading: boolean
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
-  signup: (email: string, password: string, name?: string) => Promise<{ success: boolean; error?: string }>
-  logout: () => Promise<void>
-  checkAuth: () => Promise<void>
+  logout: () => void
+  signUp: (email: string, password: string, name?: string) => Promise<{ success: boolean; error?: string }>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -28,100 +24,79 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const checkAuth = async () => {
-    try {
-      const response = await fetch('/api/auth/me', {
-        credentials: 'include'
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        setUser(data.user)
-      } else {
-        setUser(null)
+  useEffect(() => {
+    // Check for existing session on mount
+    const token = localStorage.getItem('idToken')
+    if (token) {
+      // In a real app, you'd verify the token with Cognito
+      const userData = localStorage.getItem('userData')
+      if (userData) {
+        setUser(JSON.parse(userData))
       }
-    } catch (error) {
-      console.error('Auth check failed:', error)
-      setUser(null)
-    } finally {
-      setLoading(false)
     }
-  }
+    setLoading(false)
+  }, [])
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({ email, password }),
-      })
+      const result = await CognitoAuthService.signIn(email, password)
+      
+      if (result.success && result.tokens) {
+        // Store tokens
+        localStorage.setItem('idToken', result.tokens.idToken || '')
+        localStorage.setItem('accessToken', result.tokens.accessToken || '')
+        localStorage.setItem('refreshToken', result.tokens.refreshToken || '')
 
-      const data = await response.json()
+        // Get user info and store it
+        const userData = {
+          userId: email,
+          email,
+          name: email.split('@')[0]
+        }
+        localStorage.setItem('userData', JSON.stringify(userData))
+        setUser(userData)
 
-      if (response.ok) {
-        setUser(data.user)
         return { success: true }
       } else {
-        return { success: false, error: data.error }
+        return { success: false, error: result.error }
       }
-    } catch (error) {
-      console.error('Login failed:', error)
-      return { success: false, error: 'Login failed' }
+    } catch (error: any) {
+      return { success: false, error: error.message }
     }
   }
 
-  const signup = async (email: string, password: string, name?: string) => {
+  const signUp = async (email: string, password: string, name?: string) => {
     try {
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password, name }),
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
+      const result = await CognitoAuthService.signUp(email, password, name)
+      
+      if (result.success) {
         // Auto-login after successful signup
-        const loginResult = await login(email, password)
-        return loginResult
+        return await login(email, password)
       } else {
-        return { success: false, error: data.error }
+        return { success: false, error: result.error }
       }
-    } catch (error) {
-      console.error('Signup failed:', error)
-      return { success: false, error: 'Signup failed' }
+    } catch (error: any) {
+      return { success: false, error: error.message }
     }
   }
 
-  const logout = async () => {
-    try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include'
-      })
-    } catch (error) {
-      console.error('Logout failed:', error)
-    } finally {
-      setUser(null)
-    }
+  const logout = () => {
+    // Clear local storage
+    localStorage.removeItem('idToken')
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('refreshToken')
+    localStorage.removeItem('userData')
+    
+    // Clear user state
+    setUser(null)
   }
 
-  useEffect(() => {
-    checkAuth()
-  }, [])
-
-  const value = {
+  const value: AuthContextType = {
     user,
     loading,
     login,
-    signup,
     logout,
-    checkAuth,
+    signUp
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

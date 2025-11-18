@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { DynamoDBService, SUBSCRIPTION_PLANS, SubscriptionPlan } from '@/lib/aws'
-import { CognitoAuthService } from '@/lib/aws'
+import { SubscriptionService, DynamoDBService } from '@/lib/aws'
+
+const SUBSCRIPTION_PLANS = {
+  free: { tokensAllowed: 150, price: 0 },
+  basic: { tokensAllowed: 25000, price: 6 },
+  starter: { tokensAllowed: 60000, price: 15 },
+  pro: { tokensAllowed: 150000, price: 25 },
+  developer: { tokensAllowed: 400000, price: 50 },
+  team: { tokensAllowed: 1000000, price: 99 },
+  enterprise: { tokensAllowed: 5000000, price: 299 }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,48 +19,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User ID and plan are required' }, { status: 400 })
     }
 
-    if (!SUBSCRIPTION_PLANS[plan as SubscriptionPlan]) {
+    if (!SUBSCRIPTION_PLANS[plan as keyof typeof SUBSCRIPTION_PLANS]) {
       return NextResponse.json({ error: 'Invalid subscription plan' }, { status: 400 })
     }
 
-    // Verify user exists
-    const user = await CognitoAuthService['getUserFromDB'](userId)
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    // Create subscription using AWS DynamoDB
+    const result = await SubscriptionService.createSubscription(userId, plan, billingCycle)
+
+    if (!result.success) {
+      return NextResponse.json(
+        { error: 'Failed to create subscription', details: result.error },
+        { status: 500 }
+      )
     }
 
-    const planConfig = SUBSCRIPTION_PLANS[plan as SubscriptionPlan]
-    const price = billingCycle === 'yearly' ? planConfig.price * 10 : planConfig.price
-
-    // Calculate period dates
-    const now = new Date()
-    const currentPeriodStart = now.toISOString()
-    const currentPeriodEnd = new Date(now.setMonth(now.getMonth() + (billingCycle === 'yearly' ? 12 : 1))).toISOString()
-
-    // Create subscription
-    const subscription = await DynamoDBService.createSubscription({
-      userId,
-      plan,
-      status: 'active',
-      tokensAllowed: planConfig.tokensAllowed,
-      tokensUsed: 0,
-      tokensRemaining: planConfig.tokensAllowed,
-      price,
-      currency: 'USD',
-      billingCycle,
-      paystackEmail: paymentMethod?.type === 'paystack' ? paymentMethod.email : null,
-      googlePayToken: paymentMethod?.type === 'google_pay' ? paymentMethod.token : null,
-      currentPeriodStart,
-      currentPeriodEnd
-    })
+    const planConfig = SUBSCRIPTION_PLANS[plan as keyof typeof SUBSCRIPTION_PLANS]
 
     return NextResponse.json({
-      subscription,
+      subscription: {
+        userId,
+        plan,
+        status: 'active',
+        tokensAllowed: planConfig.tokensAllowed,
+        tokensUsed: 0,
+        tokensRemaining: planConfig.tokensAllowed,
+        price: billingCycle === 'yearly' ? planConfig.price * 10 : planConfig.price,
+        billingCycle
+      },
       plan: {
         name: plan,
-        price,
-        tokensAllowed: planConfig.tokensAllowed,
-        features: planConfig.features
+        price: billingCycle === 'yearly' ? planConfig.price * 10 : planConfig.price,
+        tokensAllowed: planConfig.tokensAllowed
       }
     })
 
@@ -73,44 +71,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'User ID required' }, { status: 400 })
     }
 
-    // Get user's subscription
-    const subscription = await DynamoDBService.getSubscription(userId)
-
-    if (!subscription) {
+    // Get user's subscription from DynamoDB
+    const subscriptionResult = await SubscriptionService.getSubscription(userId)
+    if (!subscriptionResult.success) {
       return NextResponse.json({ error: 'No subscription found' }, { status: 404 })
     }
 
-    // Get usage statistics
-    const usageLogs = await DynamoDBService.getUsageLogs(userId, 100)
-
-    // Calculate usage statistics
-    const usageStats = usageLogs.reduce((acc: any, log) => {
-      const key = `${log.operation}_${log.requestType}`
-      if (!acc[key]) {
-        acc[key] = { count: 0, tokensUsed: 0, avgResponseTime: 0, responseTimes: [] }
-      }
-      acc[key].count++
-      acc[key].tokensUsed += log.tokensUsed
-      acc[key].responseTimes.push(log.responseTime)
-      return acc
-    }, {})
-
-    // Calculate averages
-    Object.keys(usageStats).forEach(key => {
-      const stats = usageStats[key]
-      stats.avgResponseTime = stats.responseTimes.reduce((a: number, b: number) => a + b, 0) / stats.responseTimes.length
-      delete stats.responseTimes
-    })
+    const subscription = subscriptionResult.item
 
     return NextResponse.json({
       subscription: {
         ...subscription,
-        planConfig: SUBSCRIPTION_PLANS[subscription.plan as SubscriptionPlan]
-      },
-      usageStats,
-      recentUsage: usageLogs.slice(0, 50),
-      isNearLimit: subscription.tokensUsed / subscription.tokensAllowed > 0.8,
-      daysRemaining: Math.ceil((new Date(subscription.currentPeriodEnd).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+        planConfig: SUBSCRIPTION_PLANS[subscription.plan as keyof typeof SUBSCRIPTION_PLANS]
+      }
     })
 
   } catch (error: any) {
@@ -130,36 +103,36 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'User ID and action are required' }, { status: 400 })
     }
 
-    const subscription = await DynamoDBService.getSubscription(userId)
-
-    if (!subscription) {
+    const subscriptionResult = await SubscriptionService.getSubscription(userId)
+    if (!subscriptionResult.success) {
       return NextResponse.json({ error: 'No subscription found' }, { status: 404 })
     }
 
-    let updateData: any = {}
+    let updateExpression = ''
+    let expressionAttributeValues: any = {}
 
     switch (action) {
       case 'cancel':
-        updateData = {
-          status: 'cancelled',
-          cancelledAt: new Date().toISOString()
+        updateExpression = 'SET #status = :status, cancelledAt = :cancelledAt'
+        expressionAttributeValues = {
+          ':status': 'cancelled',
+          ':cancelledAt': new Date().toISOString()
         }
         break
 
       case 'resume':
-        if (subscription.status !== 'cancelled') {
-          return NextResponse.json({ error: 'Subscription is not cancelled' }, { status: 400 })
-        }
-        updateData = {
-          status: 'active',
-          cancelledAt: null
+        updateExpression = 'SET #status = :status, cancelledAt = :cancelledAt'
+        expressionAttributeValues = {
+          ':status': 'active',
+          ':cancelledAt': null
         }
         break
 
       case 'reset_usage':
-        updateData = {
-          tokensUsed: 0,
-          tokensRemaining: subscription.tokensAllowed
+        updateExpression = 'SET tokensUsed = :tokensUsed, tokensRemaining = :tokensRemaining'
+        expressionAttributeValues = {
+          ':tokensUsed': 0,
+          ':tokensRemaining': subscriptionResult.item.tokensAllowed
         }
         break
 
@@ -167,9 +140,21 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }
 
-    const updatedSubscription = await DynamoDBService.updateSubscription(userId, updateData)
+    const result = await DynamoDBService.updateItem(
+      'impecks-subscriptions',
+      { userId },
+      updateExpression,
+      expressionAttributeValues
+    )
 
-    return NextResponse.json({ subscription: updatedSubscription })
+    if (!result.success) {
+      return NextResponse.json(
+        { error: 'Failed to update subscription', details: result.error },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ subscription: result.item })
 
   } catch (error: any) {
     console.error('Subscription Update Error:', error)

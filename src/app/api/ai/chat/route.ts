@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { DynamoDBService } from '@/lib/aws'
-import { CognitoAuthService } from '@/lib/aws'
+import { DynamoDBService, SubscriptionService, UsageService } from '@/lib/aws'
 import ZAI from 'z-ai-web-dev-sdk'
 
 export async function POST(request: NextRequest) {
@@ -11,22 +10,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User ID required' }, { status: 401 })
     }
 
-    // Get user and subscription info
-    const user = await CognitoAuthService['getUserFromDB'](userId)
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    // Get user's subscription
+    const subscriptionResult = await SubscriptionService.getSubscription(userId)
+    if (!subscriptionResult.success) {
+      return NextResponse.json({ error: 'No subscription found' }, { status: 403 })
     }
 
-    const subscription = await DynamoDBService.getSubscription(userId)
-    if (!subscription) {
-      return NextResponse.json({ error: 'No active subscription' }, { status: 403 })
-    }
+    const subscription = subscriptionResult.item
 
-    if (subscription.tokensUsed >= subscription.tokensAllowed) {
+    // Check token limits
+    const tokenCheck = await SubscriptionService.checkTokenLimit(userId, 100) // Estimate 100 tokens
+    if (!tokenCheck.canProceed) {
       return NextResponse.json({ 
         error: 'Token limit exceeded',
-        tokensUsed: subscription.tokensUsed,
-        tokensAllowed: subscription.tokensAllowed
+        tokensRemaining: tokenCheck.tokensRemaining
       }, { status: 429 })
     }
 
@@ -37,16 +34,6 @@ export async function POST(request: NextRequest) {
     const estimatedTokens = messages.reduce((total: number, msg: any) => {
       return total + Math.ceil(msg.content.length / 4)
     }, 0)
-
-    // Check if user has enough tokens
-    if (subscription.tokensUsed + estimatedTokens > subscription.tokensAllowed) {
-      return NextResponse.json({ 
-        error: 'Insufficient tokens for this request',
-        tokensUsed: subscription.tokensUsed,
-        tokensAllowed: subscription.tokensAllowed,
-        tokensNeeded: estimatedTokens
-      }, { status: 429 })
-    }
 
     const startTime = Date.now()
 
@@ -63,26 +50,16 @@ export async function POST(request: NextRequest) {
     const responseTime = Date.now() - startTime
     const responseContent = completion.choices[0]?.message?.content || ''
 
-    // Calculate actual tokens used
-    const actualTokensUsed = estimatedTokens
-
     // Update usage
     await Promise.all([
       // Update subscription token usage
-      DynamoDBService.updateSubscription(userId, {
-        tokensUsed: subscription.tokensUsed + actualTokensUsed,
-        tokensRemaining: subscription.tokensAllowed - (subscription.tokensUsed + actualTokensUsed)
-      }),
+      SubscriptionService.updateSubscriptionUsage(userId, estimatedTokens),
 
       // Log usage
-      DynamoDBService.createUsageLog({
-        id: `${userId}_${Date.now()}`,
-        userId,
-        tokensUsed: actualTokensUsed,
-        operation,
+      UsageService.logUsage(userId, operation, estimatedTokens, {
         endpoint: '/api/ai/chat',
         requestType: 'chat',
-        complexity: actualTokensUsed > 1000 ? 'complex' : actualTokensUsed > 500 ? 'medium' : 'simple',
+        complexity: estimatedTokens > 1000 ? 'complex' : estimatedTokens > 500 ? 'medium' : 'simple',
         responseTime,
         success: true
       })
@@ -91,8 +68,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       content: responseContent,
       usage: {
-        tokensUsed: actualTokensUsed,
-        tokensRemaining: subscription.tokensAllowed - (subscription.tokensUsed + actualTokensUsed),
+        tokensUsed: estimatedTokens,
+        tokensRemaining: subscription.tokensRemaining - estimatedTokens,
         responseTime
       }
     })
@@ -103,11 +80,7 @@ export async function POST(request: NextRequest) {
     // Log failed usage
     if (request.body?.userId) {
       try {
-        await DynamoDBService.createUsageLog({
-          id: `${request.body.userId}_${Date.now()}`,
-          userId: request.body.userId,
-          tokensUsed: 0,
-          operation: request.body.operation || 'chat',
+        await UsageService.logUsage(request.body.userId, 'chat', 0, {
           endpoint: '/api/ai/chat',
           requestType: 'chat',
           complexity: 'simple',
@@ -137,33 +110,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user's subscription info
-    const subscription = await DynamoDBService.getSubscription(userId)
-
-    if (!subscription) {
+    const subscriptionResult = await SubscriptionService.getSubscription(userId)
+    if (!subscriptionResult.success) {
       return NextResponse.json({ error: 'No subscription found' }, { status: 404 })
     }
 
+    const subscription = subscriptionResult.item
+
     // Get usage statistics
-    const usageLogs = await DynamoDBService.getUsageLogs(userId)
-
-    const usageStats = usageLogs.reduce((acc: any, log) => {
-      const key = log.operation
-      if (!acc[key]) {
-        acc[key] = { count: 0, tokensUsed: 0, avgResponseTime: 0, responseTimes: [] }
-      }
-      acc[key].count++
-      acc[key].tokensUsed += log.tokensUsed
-      acc[key].responseTimes.push(log.responseTime)
-      return acc
-    }, {})
-
-    // Calculate averages
-    Object.keys(usageStats).forEach(key => {
-      const stats = usageStats[key]
-      stats.avgResponseTime = stats.responseTimes.reduce((a: number, b: number) => a + b, 0) / stats.responseTimes.length
-      delete stats.responseTimes
-    })
-
+    const usageResult = await UsageService.getUsageStats(userId)
+    
     return NextResponse.json({
       subscription: {
         plan: subscription.plan,
@@ -172,7 +128,7 @@ export async function GET(request: NextRequest) {
         tokensRemaining: subscription.tokensRemaining,
         currentPeriodEnd: subscription.currentPeriodEnd
       },
-      usage: usageStats
+      usage: usageResult.success ? usageResult.items : []
     })
 
   } catch (error: any) {

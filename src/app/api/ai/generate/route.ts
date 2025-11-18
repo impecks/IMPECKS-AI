@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { DynamoDBService } from '@/lib/aws'
-import { CognitoAuthService } from '@/lib/aws'
+import { DynamoDBService, SubscriptionService, UsageService } from '@/lib/aws'
 import ZAI from 'z-ai-web-dev-sdk'
 
 export async function POST(request: NextRequest) {
@@ -11,40 +10,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User ID required' }, { status: 401 })
     }
 
-    // Get user and subscription info
-    const user = await CognitoAuthService['getUserFromDB'](userId)
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    // Get user's subscription
+    const subscriptionResult = await SubscriptionService.getSubscription(userId)
+    if (!subscriptionResult.success) {
+      return NextResponse.json({ error: 'No subscription found' }, { status: 403 })
     }
 
-    const subscription = await DynamoDBService.getSubscription(userId)
-    if (!subscription) {
-      return NextResponse.json({ error: 'No active subscription' }, { status: 403 })
-    }
+    const subscription = subscriptionResult.item
 
-    if (subscription.tokensUsed >= subscription.tokensAllowed) {
+    // Check token limits
+    const estimatedTokens = Math.ceil((prompt + context).length / 4)
+    const tokenCheck = await SubscriptionService.checkTokenLimit(userId, estimatedTokens)
+    if (!tokenCheck.canProceed) {
       return NextResponse.json({ 
         error: 'Token limit exceeded',
-        tokensUsed: subscription.tokensUsed,
-        tokensAllowed: subscription.tokensAllowed
+        tokensRemaining: tokenCheck.tokensRemaining
       }, { status: 429 })
     }
 
     // Initialize ZAI SDK
     const zai = await ZAI.create()
-
-    // Calculate tokens needed (simplified estimation)
-    const estimatedTokens = Math.ceil((prompt + context).length / 4)
-
-    // Check if user has enough tokens
-    if (subscription.tokensUsed + estimatedTokens > subscription.tokensAllowed) {
-      return NextResponse.json({ 
-        error: 'Insufficient tokens for this request',
-        tokensUsed: subscription.tokensUsed,
-        tokensAllowed: subscription.tokensAllowed,
-        tokensNeeded: estimatedTokens
-      }, { status: 429 })
-    }
 
     const startTime = Date.now()
 
@@ -77,33 +62,23 @@ Generate only the code without explanations unless specifically requested.`
           content: enhancedPrompt
         }
       ],
-      temperature: 0.3, // Lower temperature for more consistent code
+      temperature: 0.3,
       max_tokens: 4000
     })
 
     const responseTime = Date.now() - startTime
     const generatedCode = completion.choices[0]?.message?.content || ''
 
-    // Calculate actual tokens used
-    const actualTokensUsed = estimatedTokens
-
     // Update usage
     await Promise.all([
       // Update subscription token usage
-      DynamoDBService.updateSubscription(userId, {
-        tokensUsed: subscription.tokensUsed + actualTokensUsed,
-        tokensRemaining: subscription.tokensAllowed - (subscription.tokensUsed + actualTokensUsed)
-      }),
+      SubscriptionService.updateSubscriptionUsage(userId, estimatedTokens),
 
       // Log usage
-      DynamoDBService.createUsageLog({
-        id: `${userId}_${Date.now()}`,
-        userId,
-        tokensUsed: actualTokensUsed,
-        operation,
+      UsageService.logUsage(userId, operation, estimatedTokens, {
         endpoint: '/api/ai/generate',
         requestType: 'code_generation',
-        complexity: actualTokensUsed > 2000 ? 'complex' : actualTokensUsed > 1000 ? 'medium' : 'simple',
+        complexity: estimatedTokens > 2000 ? 'complex' : estimatedTokens > 1000 ? 'medium' : 'simple',
         responseTime,
         success: true
       })
@@ -113,8 +88,8 @@ Generate only the code without explanations unless specifically requested.`
       code: generatedCode,
       language,
       usage: {
-        tokensUsed: actualTokensUsed,
-        tokensRemaining: subscription.tokensAllowed - (subscription.tokensUsed + actualTokensUsed),
+        tokensUsed: estimatedTokens,
+        tokensRemaining: subscription.tokensRemaining - estimatedTokens,
         responseTime
       }
     })
@@ -125,11 +100,7 @@ Generate only the code without explanations unless specifically requested.`
     // Log failed usage
     if (request.body?.userId) {
       try {
-        await DynamoDBService.createUsageLog({
-          id: `${request.body.userId}_${Date.now()}`,
-          userId: request.body.userId,
-          tokensUsed: 0,
-          operation: request.body.operation || 'code_generation',
+        await UsageService.logUsage(request.body.userId, 'code_generation', 0, {
           endpoint: '/api/ai/generate',
           requestType: 'code_generation',
           complexity: 'simple',
@@ -157,40 +128,26 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'User ID required' }, { status: 401 })
     }
 
-    // Get user and subscription info
-    const user = await CognitoAuthService['getUserFromDB'](userId)
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    // Get user's subscription
+    const subscriptionResult = await SubscriptionService.getSubscription(userId)
+    if (!subscriptionResult.success) {
+      return NextResponse.json({ error: 'No subscription found' }, { status: 403 })
     }
 
-    const subscription = await DynamoDBService.getSubscription(userId)
-    if (!subscription) {
-      return NextResponse.json({ error: 'No active subscription' }, { status: 403 })
-    }
+    const subscription = subscriptionResult.item
 
-    if (subscription.tokensUsed >= subscription.tokensAllowed) {
+    // Check token limits
+    const estimatedTokens = Math.ceil((code + instruction).length / 4)
+    const tokenCheck = await SubscriptionService.checkTokenLimit(userId, estimatedTokens)
+    if (!tokenCheck.canProceed) {
       return NextResponse.json({ 
         error: 'Token limit exceeded',
-        tokensUsed: subscription.tokensUsed,
-        tokensAllowed: subscription.tokensAllowed
+        tokensRemaining: tokenCheck.tokensRemaining
       }, { status: 429 })
     }
 
     // Initialize ZAI SDK
     const zai = await ZAI.create()
-
-    // Calculate tokens needed
-    const estimatedTokens = Math.ceil((code + instruction).length / 4)
-
-    // Check if user has enough tokens
-    if (subscription.tokensUsed + estimatedTokens > subscription.tokensAllowed) {
-      return NextResponse.json({ 
-        error: 'Insufficient tokens for this request',
-        tokensUsed: subscription.tokensUsed,
-        tokensAllowed: subscription.tokensAllowed,
-        tokensNeeded: estimatedTokens
-      }, { status: 429 })
-    }
 
     const startTime = Date.now()
 
@@ -226,33 +183,23 @@ Provide the refactored code only, without explanations unless specifically reque
           content: refactoringPrompt
         }
       ],
-      temperature: 0.2, // Very low temperature for refactoring
+      temperature: 0.2,
       max_tokens: 4000
     })
 
     const responseTime = Date.now() - startTime
     const refactoredCode = completion.choices[0]?.message?.content || ''
 
-    // Calculate actual tokens used
-    const actualTokensUsed = estimatedTokens
-
     // Update usage
     await Promise.all([
       // Update subscription token usage
-      DynamoDBService.updateSubscription(userId, {
-        tokensUsed: subscription.tokensUsed + actualTokensUsed,
-        tokensRemaining: subscription.tokensAllowed - (subscription.tokensUsed + actualTokensUsed)
-      }),
+      SubscriptionService.updateSubscriptionUsage(userId, estimatedTokens),
 
       // Log usage
-      DynamoDBService.createUsageLog({
-        id: `${userId}_${Date.now()}`,
-        userId,
-        tokensUsed: actualTokensUsed,
-        operation,
+      UsageService.logUsage(userId, operation, estimatedTokens, {
         endpoint: '/api/ai/generate',
         requestType: 'refactoring',
-        complexity: actualTokensUsed > 2000 ? 'complex' : actualTokensUsed > 1000 ? 'medium' : 'simple',
+        complexity: estimatedTokens > 2000 ? 'complex' : estimatedTokens > 1000 ? 'medium' : 'simple',
         responseTime,
         success: true
       })
@@ -262,8 +209,8 @@ Provide the refactored code only, without explanations unless specifically reque
       code: refactoredCode,
       language,
       usage: {
-        tokensUsed: actualTokensUsed,
-        tokensRemaining: subscription.tokensAllowed - (subscription.tokensUsed + actualTokensUsed),
+        tokensUsed: estimatedTokens,
+        tokensRemaining: subscription.tokensRemaining - estimatedTokens,
         responseTime
       }
     })
@@ -274,11 +221,7 @@ Provide the refactored code only, without explanations unless specifically reque
     // Log failed usage
     if (request.body?.userId) {
       try {
-        await DynamoDBService.createUsageLog({
-          id: `${request.body.userId}_${Date.now()}`,
-          userId: request.body.userId,
-          tokensUsed: 0,
-          operation: request.body.operation || 'refactoring',
+        await UsageService.logUsage(request.body.userId, 'refactoring', 0, {
           endpoint: '/api/ai/generate',
           requestType: 'refactoring',
           complexity: 'simple',
