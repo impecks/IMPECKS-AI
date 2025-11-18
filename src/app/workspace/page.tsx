@@ -36,16 +36,9 @@ import {
   Bot,
   Zap,
   Cpu,
-  Cloud,
-  Database,
-  RefreshCw,
-  Download,
   Upload,
-  Trash2,
-  Copy,
-  Edit3,
-  Eye,
-  EyeOff
+  Download,
+  Wand2
 } from 'lucide-react'
 
 interface FileNode {
@@ -55,9 +48,6 @@ interface FileNode {
   content?: string
   children?: FileNode[]
   isOpen?: boolean
-  language?: string
-  size?: number
-  modified?: string
 }
 
 interface Tab {
@@ -66,22 +56,12 @@ interface Tab {
   content: string
   language: string
   isDirty: boolean
-  isSaved: boolean
-  filePath: string
 }
 
 interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
-  timestamp: Date
-  type?: 'chat' | 'code' | 'refactor' | 'bug' | 'docs'
-}
-
-interface TerminalLine {
-  id: string
-  content: string
-  type: 'command' | 'output' | 'error'
   timestamp: Date
 }
 
@@ -93,29 +73,33 @@ export default function Workspace() {
       id: 'welcome',
       name: 'Welcome.js',
       content: `// Welcome to IMPECKS-AI Workspace
-// This is your AI-powered development environment
+// GLM 4.6 Powered Development Environment
 
 const aiAssistant = {
   capabilities: [
-    'Code generation with GLM 4.6',
+    'GLM 4.6 Chat',
     'Auto-refactoring',
+    'Multi-file refactoring',
+    'Code generation',
     'Bug detection',
-    'Documentation generation',
-    'Performance optimization'
+    'Documentation generation'
   ],
   
   async generateCode(prompt) {
     console.log(\`Generating code with GLM 4.6: \${prompt}\`)
     // AI code generation happens here
+  },
+  
+  async refactorCode(code, instruction) {
+    console.log('Refactoring with GLM 4.6...')
+    // Advanced refactoring happens here
   }
 }
 
-// Start building your project!
-console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
+// Start building your project with AI assistance! 🚀
+console.log('Ready to code with GLM 4.6 assistance!')`,
       language: 'javascript',
-      isDirty: false,
-      isSaved: true,
-      filePath: '/welcome.js'
+      isDirty: false
     }
   ])
   const [fileTree, setFileTree] = useState<FileNode[]>([
@@ -131,9 +115,9 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
           type: 'folder',
           isOpen: true,
           children: [
-            { id: 'layout', name: 'layout.tsx', type: 'file', content: '// Layout component', language: 'typescript' },
-            { id: 'page', name: 'page.tsx', type: 'file', content: '// Home page', language: 'typescript' },
-            { id: 'globals', name: 'globals.css', type: 'file', content: '/* Global styles */', language: 'css' }
+            { id: 'layout', name: 'layout.tsx', type: 'file', content: '// Layout component' },
+            { id: 'page', name: 'page.tsx', type: 'file', content: '// Home page' },
+            { id: 'globals', name: 'globals.css', type: 'file', content: '/* Global styles */' }
           ]
         },
         {
@@ -143,7 +127,7 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
           isOpen: false,
           children: [
             { id: 'ui', name: 'ui', type: 'folder', isOpen: false, children: [] },
-            { id: 'header', name: 'header.tsx', type: 'file', content: '// Header component', language: 'typescript' }
+            { id: 'header', name: 'header.tsx', type: 'file', content: '// Header component' }
           ]
         },
         { id: 'lib', name: 'lib', type: 'folder', isOpen: false, children: [] }
@@ -158,38 +142,29 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
         { id: 'favicon', name: 'favicon.ico', type: 'file' }
       ]
     },
-    { id: 'package', name: 'package.json', type: 'file', content: '{}', language: 'json' },
-    { id: 'readme', name: 'README.md', type: 'file', content: '# Project Documentation', language: 'markdown' }
+    { id: 'package', name: 'package.json', type: 'file', content: '{}' },
+    { id: 'readme', name: 'README.md', type: 'file', content: '# Project Documentation' }
   ])
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       id: '1',
       role: 'assistant',
-      content: 'Hello! I\'m your GLM 4.6 AI coding assistant. I can help you with:\n\n💻 **Code Generation** - Generate high-quality code\n🔧 **Auto-Refactoring** - Improve and optimize your code\n🐛 **Bug Detection** - Find and fix issues\n📚 **Documentation** - Generate comprehensive docs\n⚡ **Performance** - Optimize your code\n\nWhat would you like to work on today?',
-      timestamp: new Date(),
-      type: 'chat'
+      content: '🚀 Welcome to IMPECKS-AI! I\'m your GLM 4.6 coding assistant. I can help you with:\n\n• **Code Generation**: Create code from descriptions\n• **Auto-Refactoring**: Improve and optimize your code\n• **Multi-file Refactoring**: Refactor entire codebases\n• **Bug Detection**: Find and fix issues in your code\n• **Documentation**: Generate comprehensive docs\n• **Performance Analysis**: Optimize your code\n\nHow can I assist you today?',
+      timestamp: new Date()
     }
   ])
   const [chatInput, setChatInput] = useState('')
-  const [terminalOutput, setTerminalOutput] = useState<TerminalLine[]>([
-    { id: '1', content: 'IMPECKS-AI Terminal v1.0.0 - GLM 4.6 Powered', type: 'output', timestamp: new Date() },
-    { id: '2', content: 'Ready for commands...', type: 'output', timestamp: new Date() }
-  ])
-  const [terminalInput, setTerminalInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
-  const [selectedModel, setSelectedModel] = useState('zhipuai/glm-4-6b')
-  const [showSearch, setShowSearch] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [activeAction, setActiveAction] = useState<string | null>(null)
-  
+  const [refactorModalOpen, setRefactorModalOpen] = useState(false)
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
+  const [refactorInstruction, setRefactorInstruction] = useState('')
   const terminalRef = useRef<HTMLDivElement>(null)
-  const editorRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     if (terminalRef.current) {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight
     }
-  }, [terminalOutput])
+  }, [])
 
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase()
@@ -203,9 +178,6 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
         return <FileJson className="h-4 w-4 text-yellow-400" />
       case 'md':
         return <FileText className="h-4 w-4 text-gray-400" />
-      case 'css':
-      case 'scss':
-        return <FileText className="h-4 w-4 text-purple-400" />
       default:
         return <File className="h-4 w-4 text-gray-400" />
     }
@@ -248,10 +220,8 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
           id: fileId,
           name: file.name,
           content: file.content || '',
-          language: file.language || 'javascript',
-          isDirty: false,
-          isSaved: true,
-          filePath: `/${file.name}`
+          language: 'javascript',
+          isDirty: false
         }
         setTabs([...tabs, newTab])
       }
@@ -269,23 +239,14 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
     }
   }
 
-  const updateTabContent = (tabId: string, content: string) => {
-    setTabs(tabs.map(tab => 
-      tab.id === tabId 
-        ? { ...tab, content, isDirty: true, isSaved: false }
-        : tab
-    ))
-  }
-
-  const sendMessage = async (type: 'chat' | 'code' | 'refactor' | 'bug' | 'docs' = 'chat') => {
+  const sendMessage = async () => {
     if (!chatInput.trim()) return
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
       content: chatInput,
-      timestamp: new Date(),
-      type
+      timestamp: new Date()
     }
 
     setChatMessages([...chatMessages, userMessage])
@@ -293,76 +254,43 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
     setIsProcessing(true)
 
     try {
-      let endpoint = '/api/ai/chat'
-      let requestBody: any = { messages: [{ role: 'user', content: chatInput }], userId: user?.userId, model: selectedModel }
-
-      switch (type) {
-        case 'code':
-          endpoint = '/api/ai/generate'
-          requestBody = { prompt: chatInput, userId: user?.userId, language: 'javascript', model: selectedModel }
-          break
-        case 'refactor':
-          endpoint = '/api/refactor'
-          // Get current tab content for refactoring
-          const currentTab = tabs.find(tab => tab.id === activeTab)
-          if (currentTab) {
-            requestBody = { code: currentTab.content, instruction: chatInput, language: currentTab.language, userId: user?.userId, model: selectedModel }
-          }
-          break
-        case 'bug':
-          endpoint = '/api/ai/analyze'
-          const bugTab = tabs.find(tab => tab.id === activeTab)
-          if (bugTab) {
-            requestBody = { code: bugTab.content, language: bugTab.language, userId: user?.userId, model: selectedModel }
-          }
-          break
-        case 'docs':
-          endpoint = '/api/ai/docs'
-          const docsTab = tabs.find(tab => tab.id === activeTab)
-          if (docsTab) {
-            requestBody = { code: docsTab.content, language: docsTab.language, userId: user?.userId, model: selectedModel }
-          }
-          break
-      }
-
-      const response = await fetch(endpoint, {
+      const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert software engineer and AI coding assistant powered by GLM 4.6. You provide helpful, accurate, and detailed coding assistance.'
+            },
+            {
+              role: 'user',
+              content: chatInput
+            }
+          ],
+          userId: user?.userId,
+          model: 'zhipuai/glm-4-6b'
+        })
       })
 
-      const data = await response.json()
+      const result = await response.json()
 
-      const aiResponse: ChatMessage = {
+      const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: type === 'refactor' ? data.refactoredCode : 
-                  type === 'code' ? data.code : 
-                  type === 'bug' ? data.analysis :
-                  type === 'docs' ? data.documentation :
-                  data.content || 'I apologize, but I couldn\'t process that request.',
-        timestamp: new Date(),
-        type
+        content: result.content || 'I apologize, but I couldn\'t process that request.',
+        timestamp: new Date()
       }
 
-      setChatMessages(prev => [...prev, aiResponse])
-
-      // Auto-update editor for refactoring
-      if (type === 'refactor' && data.refactoredCode) {
-        const currentTab = tabs.find(tab => tab.id === activeTab)
-        if (currentTab) {
-          updateTabContent(activeTab, data.refactoredCode)
-        }
-      }
+      setChatMessages(prev => [...prev, aiMessage])
 
     } catch (error) {
-      console.error('AI API Error:', error)
+      console.error('Chat API Error:', error)
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Sorry, I encountered an error processing your request. Please try again.',
-        timestamp: new Date(),
-        type
+        content: 'Sorry, I encountered an error. Please try again.',
+        timestamp: new Date()
       }
       setChatMessages(prev => [...prev, errorMessage])
     } finally {
@@ -370,94 +298,129 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
     }
   }
 
-  const executeCommand = (command: string) => {
-    setTerminalOutput(prev => [...prev, {
-      id: Date.now().toString(),
-      content: `$ ${command}`,
-      type: 'command',
-      timestamp: new Date()
-    }])
+  const startMultiFileRefactor = () => {
+    if (selectedFiles.length === 0) {
+      alert('Please select files to refactor')
+      return
+    }
 
-    // Process commands
-    switch (command.toLowerCase()) {
-      case 'help':
-        setTerminalOutput(prev => [...prev, {
-          id: (Date.now() + 1).toString(),
-          content: 'Available commands:\n  help     - Show this help message\n  clear    - Clear terminal\n  status   - Show workspace status\n  build    - Build project\n  deploy   - Deploy to AWS\n  ai-chat  - Open AI chat\n  refactor  - Refactor current file',
-          type: 'output',
-          timestamp: new Date()
-        }])
-        break
-      case 'clear':
-        setTerminalOutput([{
-          id: Date.now().toString(),
-          content: 'Terminal cleared',
-          type: 'output',
-          timestamp: new Date()
-        }])
-        break
-      case 'status':
-        setTerminalOutput(prev => [...prev, {
-          id: (Date.now() + 1).toString(),
-          content: `Workspace Status:\n  Files: ${tabs.length} open\n  Model: ${selectedModel}\n  User: ${user?.email || 'Guest'}\n  GLM 4.6: Active`,
-          type: 'output',
-          timestamp: new Date()
-        }])
-        break
-      case 'build':
-        setTerminalOutput(prev => [...prev, {
-          id: (Date.now() + 1).toString(),
-          content: '🔨 Building project...\n✅ Build completed successfully!',
-          type: 'output',
-          timestamp: new Date()
-        }])
-        break
-      case 'deploy':
-        setTerminalOutput(prev => [...prev, {
-          id: (Date.now() + 1).toString(),
-          content: '🚀 Deploying to AWS...\n✅ Deployment completed!',
-          type: 'output',
-          timestamp: new Date()
-        }])
-        break
-      default:
-        setTerminalOutput(prev => [...prev, {
-          id: (Date.now() + 1).toString(),
-          content: `Command not found: ${command}. Type 'help' for available commands.`,
-          type: 'error',
-          timestamp: new Date()
-        }])
+    const files = selectedFiles.map(fileId => {
+      const findFile = (nodes: FileNode[]): FileNode | null => {
+        for (const node of nodes) {
+          if (node.id === fileId && node.type === 'file') {
+            return node
+          }
+          if (node.children) {
+            const found = findFile(node.children)
+            if (found) return found
+          }
+        }
+        return null
+      }
+
+      return findFile(fileTree)
+    }).filter(f => f !== null).map(f => ({
+      name: f.name,
+      content: f.content || '',
+      language: 'javascript'
+    }))
+
+    if (files.length > 0) {
+      setRefactorModalOpen(true)
     }
   }
 
-  const handleTerminalSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (terminalInput.trim()) {
-      executeCommand(terminalInput)
-      setTerminalInput('')
+  const executeMultiFileRefactor = async () => {
+    if (!refactorInstruction.trim()) return
+
+    const files = selectedFiles.map(fileId => {
+      const findFile = (nodes: FileNode[]): FileNode | null => {
+        for (const node of nodes) {
+          if (node.id === fileId && node.type === 'file') {
+            return node
+          }
+          if (node.children) {
+            const found = findFile(node.children)
+            if (found) return found
+          }
+        }
+        return null
+      }
+
+      return findFile(fileTree)
+    }).filter(f => f !== null).map(f => ({
+      name: f.name,
+      content: f.content || '',
+      language: 'javascript'
+    }))
+
+    setIsProcessing(true)
+    setRefactorModalOpen(false)
+
+    try {
+      const response = await fetch('/api/refactor/multi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          files,
+          instruction: refactorInstruction,
+          userId: user?.userId,
+          model: 'zhipuai/glm-4-6b'
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // Add refactored files as new tabs
+        result.refactoredFiles.forEach((file: any, index) => {
+          const newTab: Tab = {
+            id: `refactored-${file.name}-${Date.now()}`,
+            name: `${file.name}-refactored.js`,
+            content: file.refactoredCode,
+            language: 'javascript',
+            isDirty: false
+          }
+          setTabs(prev => [...prev, newTab])
+        })
+
+        // Switch to first refactored file
+        if (result.refactoredFiles.length > 0) {
+          setActiveTab(`refactored-${result.refactoredFiles[0].name}-${Date.now()}`)
+        }
+
+        alert('Multi-file refactoring completed! Check the new tabs for refactored code.')
+      } else {
+        alert('Refactoring failed: ' + (result.error || 'Unknown error'))
+      }
+    } catch (error) {
+      console.error('Multi-file refactor error:', error)
+      alert('Refactoring failed: ' + error.message)
+    } finally {
+      setIsProcessing(false)
+      setRefactorInstruction('')
+      setSelectedFiles([])
     }
   }
 
-  const saveFile = async () => {
-    const currentTab = tabs.find(tab => tab.id === activeTab)
-    if (currentTab && currentTab.content) {
-      // Simulate saving to S3
-      setTabs(tabs.map(tab => 
-        tab.id === activeTab 
-          ? { ...tab, isDirty: false, isSaved: true }
-          : tab
-      ))
-      
-      setTerminalOutput(prev => [...prev, {
-        id: Date.now().toString(),
-        content: `💾 Saved ${currentTab.name} to workspace`,
-        type: 'output',
-        timestamp: new Date()
-      }])
-    }
+  const toggleFileSelection = (fileId: string) => {
+    setSelectedFiles(prev => 
+      prev.includes(fileId) 
+        ? prev.filter(id => id !== fileId)
+        : [...prev, fileId]
+    )
   }
 
   const currentTab = tabs.find(tab => tab.id === activeTab)
+
+  if (!user) {
+    return <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <Loader2 className="h-8 w-8 animate-spin mb-4" />
+        <p>Loading workspace...</p>
+      </div>
+    </div>
+  }
 
   return (
     <div className="h-screen bg-background flex flex-col">
@@ -471,32 +434,17 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
             </div>
             <Badge variant="outline" className="text-xs">
               <Zap className="w-3 h-3 mr-1" />
-              GLM 4.6 Active
-            </Badge>
-            <Badge variant="outline" className="text-xs">
-              <Bot className="w-3 h-3 mr-1" />
-              {selectedModel.split('/')[1]?.split('-')[0]?.toUpperCase() || 'GLM'}
+              GLM 4.6
             </Badge>
           </div>
           <div className="flex items-center gap-2">
-            <select 
-              value={selectedModel} 
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="bg-background border border-border rounded px-2 py-1 text-sm"
-            >
-              <option value="zhipuai/glm-4-6b">GLM 4.6</option>
-              <option value="anthropic/claude-3.5-sonnet">Claude 3.5</option>
-              <option value="openai/gpt-4-turbo">GPT-4 Turbo</option>
-              <option value="openai/gpt-4o">GPT-4o</option>
-              <option value="google/gemini-pro">Gemini Pro</option>
-            </select>
             <Button variant="ghost" size="sm">
               <GitBranch className="h-4 w-4 mr-2" />
               main
             </Button>
             <Button variant="ghost" size="sm">
-              <Cloud className="h-4 w-4 mr-2" />
-              AWS
+              <Terminal className="h-4 w-4 mr-2" />
+              Terminal
             </Button>
             <Button variant="ghost" size="sm">
               <Settings className="h-4 w-4" />
@@ -515,25 +463,19 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
                 <CardTitle className="text-sm flex items-center justify-between">
                   <span>Explorer</span>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => setShowSearch(!showSearch)}>
-                      <Search className="h-3 w-3" />
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setRefactorModalOpen(true)}
+                      disabled={selectedFiles.length === 0}
+                    >
+                      <Wand2 className="h-3 w-3" />
                     </Button>
                     <Button variant="ghost" size="sm">
                       <Plus className="h-3 w-3" />
                     </Button>
-                    <Button variant="ghost" size="sm">
-                      <RefreshCw className="h-3 w-3" />
-                    </Button>
                   </div>
                 </CardTitle>
-                {showSearch && (
-                  <Input
-                    placeholder="Search files..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="mt-2"
-                  />
-                )}
               </CardHeader>
               <CardContent className="p-0">
                 <ScrollArea className="h-[calc(100vh-8rem)]">
@@ -586,7 +528,12 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
                                         className="w-full justify-start p-1 h-6"
                                         onClick={() => openFile(child.id)}
                                       >
-                                        <div className="w-4 mr-2" />
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedFiles.includes(child.id)}
+                                          onChange={() => toggleFileSelection(child.id)}
+                                          className="mr-2"
+                                        />
                                         {getFileIcon(child.name)}
                                         <span className="ml-2">{child.name}</span>
                                       </Button>
@@ -603,6 +550,12 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
                             className="w-full justify-start p-1 h-6"
                             onClick={() => openFile(node.id)}
                           >
+                            <input
+                              type="checkbox"
+                              checked={selectedFiles.includes(node.id)}
+                              onChange={() => toggleFileSelection(node.id)}
+                              className="mr-2"
+                            />
                             {getFileIcon(node.name)}
                             <span className="ml-2">{node.name}</span>
                           </Button>
@@ -618,24 +571,23 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
           <ResizableHandle withHandle />
 
           {/* Editor Area */}
-          <ResizablePanel defaultSize={50}>
+          <ResizablePanel defaultSize={60}>
             <div className="h-full flex flex-col">
               {/* Tabs */}
               <div className="border-b bg-muted/30">
-                <div className="flex items-center overflow-x-auto">
+                <div className="flex items-center">
                   {tabs.map(tab => (
                     <Button
                       key={tab.id}
                       variant={activeTab === tab.id ? "default" : "ghost"}
                       size="sm"
-                      className="rounded-none border-r justify-between whitespace-nowrap"
+                      className="rounded-none border-r justify-between"
                       onClick={() => setActiveTab(tab.id)}
                     >
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex items-center gap-2">
                         {getFileIcon(tab.name)}
-                        <span className="truncate">{tab.name}</span>
+                        <span>{tab.name}</span>
                         {tab.isDirty && <div className="w-2 h-2 bg-orange-400 rounded-full" />}
-                        {!tab.isSaved && <EyeOff className="h-3 w-3 text-gray-400" />}
                       </div>
                       <Button
                         variant="ghost"
@@ -654,45 +606,13 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
               </div>
 
               {/* Code Editor */}
-              <div className="flex-1 p-4">
-                {currentTab ? (
-                  <div className="h-full flex flex-col">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-muted-foreground">{currentTab.filePath}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {currentTab.language}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" onClick={saveFile}>
-                          <Save className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm">
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm">
-                          <Download className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="flex-1 bg-muted/50 rounded-lg p-4">
-                      <textarea
-                        ref={editorRef}
-                        value={currentTab.content}
-                        onChange={(e) => updateTabContent(currentTab.id, e.target.value)}
-                        className="w-full h-full bg-transparent font-mono text-sm leading-relaxed resize-none outline-none"
-                        placeholder="Start coding..."
-                        spellCheck={false}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center">
-                      <Code className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold mb-2">No file open</h3>
-                      <p className="text-muted-foreground">Select a file from the explorer to start coding</p>
+              <div className="flex-1 p-4 font-mono text-sm">
+                {currentTab && (
+                  <div className="h-full">
+                    <div className="bg-muted/50 rounded-lg p-4 h-full">
+                      <pre className="text-sm leading-relaxed whitespace-pre-wrap">
+                        <code>{currentTab.content}</code>
+                      </pre>
                     </div>
                   </div>
                 )}
@@ -703,7 +623,7 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <div className="flex items-center gap-4">
                     <span>Line 1, Col 1</span>
-                    <span>{currentTab?.language || 'Plain Text'}</span>
+                    <span>{currentTab?.language || 'JavaScript'}</span>
                     <span>UTF-8</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -718,12 +638,12 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
           <ResizableHandle withHandle />
 
           {/* Side Panel */}
-          <ResizablePanel defaultSize={30}>
+          <ResizablePanel defaultSize={20}>
             <Tabs defaultValue="chat" className="h-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="chat" className="flex items-center gap-2">
                   <MessageSquare className="h-4 w-4" />
-                  AI Chat
+                  Chat
                 </TabsTrigger>
                 <TabsTrigger value="terminal" className="flex items-center gap-2">
                   <Terminal className="h-4 w-4" />
@@ -738,43 +658,6 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
                       <Bot className="h-4 w-4" />
                       GLM 4.6 Assistant
                     </CardTitle>
-                    <div className="flex gap-1">
-                      <Button 
-                        variant={activeAction === 'chat' ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => setActiveAction('chat')}
-                      >
-                        Chat
-                      </Button>
-                      <Button 
-                        variant={activeAction === 'code' ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => setActiveAction('code')}
-                      >
-                        Generate
-                      </Button>
-                      <Button 
-                        variant={activeAction === 'refactor' ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => setActiveAction('refactor')}
-                      >
-                        Refactor
-                      </Button>
-                      <Button 
-                        variant={activeAction === 'bug' ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => setActiveAction('bug')}
-                      >
-                        Debug
-                      </Button>
-                      <Button 
-                        variant={activeAction === 'docs' ? 'default' : 'ghost'}
-                        size="sm"
-                        onClick={() => setActiveAction('docs')}
-                      >
-                        Docs
-                      </Button>
-                    </div>
                   </CardHeader>
                   <CardContent className="p-0">
                     <div className="flex flex-col h-[calc(100vh-12rem)]">
@@ -792,14 +675,6 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
                                     : 'bg-muted'
                                 }`}
                               >
-                                {message.type && (
-                                  <Badge variant="outline" className="mb-2 text-xs">
-                                    {message.type === 'chat' ? '💬' :
-                                     message.type === 'code' ? '💻' :
-                                     message.type === 'refactor' ? '🔧' :
-                                     message.type === 'bug' ? '🐛' : '📚'} {message.type}
-                                  </Badge>
-                                )}
                                 <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                                 <p className="text-xs opacity-70 mt-1">
                                   {message.timestamp.toLocaleTimeString()}
@@ -810,23 +685,23 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
                           {isProcessing && (
                             <div className="flex justify-start">
                               <div className="bg-muted p-3 rounded-lg">
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <div className="flex items-center gap-2">
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  <span className="text-sm">GLM 4.6 is thinking...</span>
+                                </div>
                               </div>
                             </div>
                           )}
                         </div>
                       </ScrollArea>
                       <div className="border-t p-4">
-                        <form onSubmit={(e) => { e.preventDefault(); sendMessage(activeAction as any || 'chat'); }} className="flex gap-2">
+                        <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex gap-2">
                           <Input
                             value={chatInput}
                             onChange={(e) => setChatInput(e.target.value)}
-                            placeholder={activeAction === 'refactor' ? "Describe how to refactor the current file..." :
-                                     activeAction === 'code' ? "What code would you like me to generate?" :
-                                     activeAction === 'bug' ? "Describe the bug you're looking for..." :
-                                     activeAction === 'docs' ? "What documentation would you like me to generate?" :
-                                     "Ask GLM 4.6 for help with your code..."}
+                            placeholder="Ask GLM 4.6 for coding help..."
                             className="flex-1"
+                            disabled={isProcessing}
                           />
                           <Button type="submit" size="sm" disabled={isProcessing}>
                             <Send className="h-4 w-4" />
@@ -847,29 +722,15 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-0">
-                    <div className="flex flex-col h-[calc(100vh-8rem)]">
+                    <div className="flex flex-col h-[calc(100vh-12rem)]">
                       <ScrollArea ref={terminalRef} className="flex-1 p-4 font-mono text-sm">
                         <div className="space-y-1">
-                          {terminalOutput.map(line => (
-                            <div key={line.id} className={line.type === 'error' ? 'text-red-400' : 
-                                                                       line.type === 'command' ? 'text-green-400' : 
-                                                                       'text-green-400'}>
-                              {line.content}
-                            </div>
-                          ))}
+                          <div className="text-green-400">$ IMPECKS-AI Terminal v1.0.0</div>
+                          <div className="text-green-400">$ GLM 4.6 Integration: Active</div>
+                          <div className="text-green-400">$ Ready for commands...</div>
+                          <div className="text-green-400">$ Type "help" for available commands</div>
                         </div>
                       </ScrollArea>
-                      <form onSubmit={handleTerminalSubmit} className="border-t p-4">
-                        <div className="flex items-center gap-2">
-                          <span className="text-green-400 font-mono">$</span>
-                          <Input
-                            value={terminalInput}
-                            onChange={(e) => setTerminalInput(e.target.value)}
-                            placeholder="Enter command..."
-                            className="flex-1 font-mono text-sm border-0 bg-transparent focus-visible:ring-0"
-                          />
-                        </div>
-                      </form>
                     </div>
                   </CardContent>
                 </Card>
@@ -878,6 +739,80 @@ console.log('Ready to code with GLM 4.6 AI assistance 🚀')`,
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
+
+      {/* Multi-file Refactor Modal */}
+      {refactorModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-4xl mx-4 max-h-[90vh] overflow-hidden">
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Wand2 className="h-5 w-5" />
+                Multi-file Refactor with GLM 4.6
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setRefactorModalOpen(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">Selected Files ({selectedFiles.length}):</label>
+                  <div className="text-xs text-muted-foreground mb-2">
+                    {selectedFiles.map(fileId => {
+                      const findFile = (nodes: FileNode[]): FileNode | null => {
+                        for (const node of nodes) {
+                          if (node.id === fileId && node.type === 'file') {
+                            return node
+                          }
+                          if (node.children) {
+                            const found = findFile(node.children)
+                            if (found) return found
+                          }
+                        }
+                        return null
+                      }
+
+                      const file = findFile(fileTree)
+                      return file ? file.name : 'Unknown'
+                    }).join(', ')}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Refactoring Instruction:</label>
+                  <textarea
+                    value={refactorInstruction}
+                    onChange={(e) => setRefactorInstruction(e.target.value)}
+                    placeholder="e.g., Optimize for performance, Add error handling, Convert to modern syntax, Improve code organization..."
+                    className="w-full h-32 p-3 border rounded-md bg-muted/50 text-sm"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <Button 
+                    onClick={executeMultiFileRefactor}
+                    className="flex-1"
+                    disabled={!refactorInstruction.trim() || selectedFiles.length === 0 || isProcessing}
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Refactoring with GLM 4.6...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="mr-2 h-4 w-4" />
+                        Start Multi-file Refactor
+                      </>
+                    )}
+                  </Button>
+                  <Button variant="outline" onClick={() => setRefactorModalOpen(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
